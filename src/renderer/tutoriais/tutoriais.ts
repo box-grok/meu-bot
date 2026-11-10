@@ -273,7 +273,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     const reaberto = done && step.refazer === true && passoReaberto?.tut === t.id && passoReaberto.step === step.id;
     if (done) {
       // A linha da etapa feita diz o resultado ("Grupo: status · Trocar"); sem resumo, "concluído".
-      const linha = el("p", "", step.resumo?.(ctx.guideCtx()) ?? "concluído");
+      const linha = el("p", "", step.resumo?.(ctx.guideCtx(), ctx.waStatus) ?? "concluído");
       if (step.refazer === true) {
         const b = el("button", "linkish", reaberto ? "Pronto" : "Trocar"); b.type = "button";
         b.title = reaberto ? "Fecha o passo; o que você marcou já vale" : "Reabre este passo para trocar a escolha, sem recomeçar o tutorial";

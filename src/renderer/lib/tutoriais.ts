@@ -138,7 +138,7 @@ export interface GuideStep {
    */
   refazer?: true;
   /** Concluído, a linha mostra o resultado ("Grupo: status") em vez de só "concluído"; null = sem resumo. */
-  resumo?: (ctx: GuideContext) => string | null;
+  resumo?: (ctx: GuideContext, status: WhatsappStatus | null) => string | null;
 }
 /** O passo está concluído: pelo estado real ou, se for um fato `lembrar`, porque já foi visto concluído. */
 export const passoFeito = (s: GuideStep, status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext): boolean =>
@@ -193,12 +193,19 @@ export interface Tutorial {
   steps: GuideStep[];
 }
 
+/** "Agente: OpenClaw" / "Agente: Hermes" do passo 1 do tutorial 3 concluído; null = ainda não se sabe. */
+export function agenteResumo(st: WhatsappStatus | null): string | null {
+  const a = st?.escolha ?? (st?.present === true && (st.gateway === "openclaw" || st.gateway === "hermes") ? st.gateway : null);
+  return a === null || a === undefined ? null : `Agente: ${a === "openclaw" ? "OpenClaw" : "Hermes"}`;
+}
 const WHATSAPP_STEPS: GuideStep[] = [
   {
     id: "escolher", title: "Qual agente atende o seu WhatsApp?", target: "none", body: "agent-choice",
     text: "Os dois fazem tudo deste tutorial: responder e escolher quem. Os dois também entendem áudio: a transcrição liga sozinha depois de parear. Se não souber, fique com o recomendado.",
     // Escolhido, ou a máquina já tem um dos dois atendendo (dá para trocar depois, no WhatsApp).
     done: (st) => st !== null && (st.escolha != null || (st.present && (st.gateway === "openclaw" || st.gateway === "hermes"))),
+    // Qual dos dois ficou: o escolhido, senão o que a máquina já tinha (a mesma regra de agenteAtual).
+    resumo: (_c, st) => agenteResumo(st),
   },
   {
     id: "preparar", title: "Preparar o WhatsApp nesta máquina", target: "wa-agent",
