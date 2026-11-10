@@ -12,6 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { backendBundleDir } from "./hostProbe";
 import { BACKEND_RUNTIME_FILES } from "./backend-bundle-core";
+import { ehNossoOrfao, pidsDoLsof } from "./backend-local-orfao-core";
 import { produto } from "../app/variant";
 
 export const LOCAL_HOST = "local";
@@ -95,6 +96,25 @@ function portOpen(port: number): Promise<boolean> {
   });
 }
 
+/**
+ * A porta está com o NOSSO server.js de um processo anterior (a troca de versão o deixava órfão)? Encerra e espera a
+ * porta soltar. Devolve true se liberou; false se não era nosso ou não saiu (aí vale o erro de porta em uso).
+ */
+async function liberarOrfao(port: number, serverJs: string): Promise<boolean> {
+  const l = spawnSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], { encoding: "utf8", timeout: 5000 });
+  const nossos = pidsDoLsof(l.stdout ?? "", process.pid).filter((pid) => {
+    const ps = spawnSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 5000 });
+    return ehNossoOrfao(ps.stdout ?? "", serverJs);
+  });
+  if (nossos.length === 0) return false;
+  for (const pid of nossos) { try { process.kill(pid, "SIGTERM"); } catch { /* já saiu */ } }
+  log(`backend local órfão de uma abertura anterior (pid ${nossos.join(", ")}) segurava a porta ${port}: encerrado`);
+  for (let i = 0; i < 25; i++) { if (!(await portOpen(port))) return true; await new Promise((r) => setTimeout(r, 200)); }
+  for (const pid of nossos) { try { process.kill(pid, "SIGKILL"); } catch { /* já saiu */ } }
+  await new Promise((r) => setTimeout(r, 300));
+  return !(await portOpen(port));
+}
+
 export const localBackendAlive = (): boolean => state !== undefined && state.child.exitCode === null;
 
 /** Garante o backend local no ar e devolve porta + chave. Reinicia se o processo morreu. */
@@ -117,7 +137,7 @@ export function ensureLocalBackend(onStatus?: (detail: string) => void): Promise
       if (!fs.existsSync(path.join(d, "providers.json"))) fs.copyFileSync(path.join(bundle, "providers.json"), path.join(d, "providers.json"));
       const apiKey = readOrCreateEnv(d, claude);
       if (state !== undefined) { try { state.child.kill("SIGTERM"); } catch { /* já morto */ } state = undefined; }
-      if (await portOpen(localPort())) throw new Error(`A porta ${localPort()} já está em uso neste Mac por outro programa.`);
+      if (await portOpen(localPort()) && !(await liberarOrfao(localPort(), path.join(d, "server.js")))) throw new Error(`A porta ${localPort()} já está em uso neste Mac por outro programa.`);
       onStatus?.("subindo o backend neste Mac…");
       const logFd = fs.openSync(path.join(app.getPath("userData"), "backend-local.log"), "a");
       const extraPath = [path.dirname(node), path.dirname(claude), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].join(":");

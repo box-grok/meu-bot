@@ -12,6 +12,10 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### Atualização: "Este Mac" volta funcionando depois de reiniciar na versão nova
+#### Corrigido
+- Depois de atualizar com a janela "Este Mac" aberta, o app reabria com "túnel instável: a porta já está em uso" e as conversas deste Mac não respondiam: o backend da versão anterior continuava rodando. Agora ele é encerrado antes da troca, e o app reaberto encerra sozinho um que tenha sobrado.
+
 ### Atualizar agora, num clique
 #### Novo
 - **Botão "Atualizar agora"** em Configurações › Sobre e atualização e no menu do app: procura a versão mais nova, baixa e reinicia nela, sem esperar a verificação de hora em hora. Com uma resposta em andamento, ele pergunta antes de interromper, como o "Reiniciar e atualizar".

@@ -444,7 +444,15 @@ export async function moverParaAplicativos(): Promise<void> {
   relancar(destino);
 }
 /** Reabre o app já na versão nova, na mesma máquina que a pessoa estava (sem `--host`, o seletor abre). */
+/**
+ * O que o `will-quit` faz e precisa acontecer antes da troca também: `app.exit` sai SEM emitir `will-quit`, e o
+ * backend local (filho do app) sobrevivia segurando a porta, com o app reaberto dizendo "a porta já está em uso".
+ * O main.ts registra (fechar túnel, backend local e proxy); aqui não se importa o túnel para não fechar um ciclo.
+ */
+let antesDeRelancar: (() => void) | null = null;
+export const onAntesDeRelancar = (cb: () => void): void => { antesDeRelancar = cb; };
 function relancar(mine: string): void {
+  try { antesDeRelancar?.(); } catch (e) { log(`[atualização] limpeza antes de reiniciar falhou: ${erroTexto(e)}`); }
   const host = getLastFocusedHost();
   app.relaunch({ execPath: path.join(mine, "Contents", "MacOS", path.basename(process.execPath)), args: host === null ? [] : [`--host=${host}`] });
   app.exit(0);
