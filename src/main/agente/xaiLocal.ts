@@ -107,9 +107,12 @@ function iniciarProxy(): void {
   const ini = Date.now();
   child.on("error", (e) => log(`proxy não iniciou: ${e.message}`));
   child.on("exit", (code, signal) => {
-    if (proxy === child) proxy = null;
+    // Um filho que já foi substituído (stop + ensure) não agenda nada: senão ficavam dois ciclos de retry.
+    if (proxy !== child) return;
+    proxy = null;
     if (!proxyQuer) return;
     log(`proxy saiu após ${Date.now() - ini} ms (code=${code} signal=${signal}); de novo em 15 s`);
+    if (proxyRetry !== null) return; // um ciclo só
     proxyRetry = setTimeout(() => { proxyRetry = null; subirProxy(); }, 15_000);
     proxyRetry.unref();
   });

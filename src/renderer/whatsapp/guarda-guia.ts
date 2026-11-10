@@ -15,7 +15,7 @@ export let guardaMsg: { text: string; bad: boolean } | null = null;
 export function setGuardaMsg(v: { text: string; bad: boolean } | null): void { guardaMsg = v; }
 
 export async function refreshGuarda(): Promise<void> {
-  if (!ctx.caps.install || ctx.windowHost === "" || ctx.windowHost === "local") return;
+  if (!ctx.caps.install || ctx.windowHost === "") return;
   try { guardaState = await window.meuBot.guardaInstalled(); } catch { /* máquina fora: fica o que havia */ }
   ctx.paintGuide();
 }

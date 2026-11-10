@@ -12,6 +12,10 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### Guarda do WhatsApp neste Mac
+#### Novo
+- **Guarda do WhatsApp neste Mac**: o tutorial 8 deixa de ficar em "Consultando a máquina…"; "Ativar" instala a guarda no OpenClaw daqui (avisos técnicos não vão ao contato, conversa bot-com-bot em loop é pausada).
+
 ### Grok neste Mac: o proxy volta depois de fechar e reabrir o app
 #### Corrigido
 - Depois de fechar o app (ou de ele se atualizar), o Grok do "Este Mac" podia ficar preso num proxy da abertura anterior, e o app tentava subir outro a cada 15 s sem conseguir ("address already in use" no `xai-proxy.log`). Agora o app encerra o proxy inteiro ao fechar, e ao abrir encerra sozinho um que tenha sobrado.

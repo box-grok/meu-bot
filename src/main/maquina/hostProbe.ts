@@ -577,8 +577,11 @@ export async function uninstallCrm(host: string): Promise<InstallBackendResult> 
 
 /** A guarda do WhatsApp está nesta máquina? (a cópia registrada no OpenClaw; null para este Mac) */
 export async function guardaInstalled(host: string): Promise<boolean | null> {
-  if (host === LOCAL_HOST || !isValidHost(host)) return null;
-  const r = await run("ssh", [...sshBase(host), "--", host, `command -v openclaw >/dev/null 2>&1 || [ -x "$HOME/.openclaw/bin/openclaw" ] || { echo guarda=none; exit 0; }; [ -f "$HOME/.local/share/meu-bot/guarda/index.js" ] && echo guarda=1 || echo guarda=0`], 25_000);
+  const sh = `command -v openclaw >/dev/null 2>&1 || [ -x "$HOME/.openclaw/bin/openclaw" ] || { echo guarda=none; exit 0; }; [ -f "$HOME/.local/share/meu-bot/guarda/index.js" ] && echo guarda=1 || echo guarda=0`;
+  // Este Mac: o mesmo teste, no bash daqui com o prelúdio (PATH do OpenClaw instalado pelo tutorial 3).
+  if (host === LOCAL_HOST) { const r = await run("/bin/bash", ["-c", scriptLocal(sh)], 25_000); return r.stdout.includes("guarda=none") ? null : r.stdout.includes("guarda=1"); }
+  if (!isValidHost(host)) return null;
+  const r = await run("ssh", [...sshBase(host), "--", host, sh], 25_000);
   if (r.stdout.includes("guarda=none")) return null;
   return r.stdout.includes("guarda=1");
 }
@@ -588,10 +591,17 @@ export async function guardaInstalled(host: string): Promise<boolean | null> {
  * e roda o instalador, que registra o plugin por --link (o gateway aplica na hora). Mesmo molde da status line.
  */
 export async function installGuarda(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {
-  if (host === LOCAL_HOST) return { ok: false, log: ["a guarda é do agente do WhatsApp (OpenClaw) de uma máquina por SSH"] };
   const lines: string[] = [];
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
   const dir = backendBundleDir();
+  // Este Mac: a pasta guarda/ e a skill whatsapp-grupos já estão ao lado do instalador, no próprio app; ele copia para
+  // ~/.local/share/meu-bot/guarda e registra no OpenClaw daqui (o vigia por systemd fica de fora: o launchd religa o gateway).
+  if (host === LOCAL_HOST) {
+    say("rodando o instalador da guarda neste Mac…");
+    const inst = await run("/bin/bash", ["-c", scriptLocal(`bash '${path.join(dir, "install-guarda.sh")}' 2>&1\n`)], 4 * 60_000, say);
+    if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
+    return { ok: true, log: lines };
+  }
   say(`enviando a guarda para ${host}:${stageDe("guarda")}…`);
   const mk = await run("ssh", [...sshBase(host), "--", host, `${limparStage("guarda")}; mkdir -p ${stageDe("guarda")}/guarda`], 20_000);
   if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
@@ -632,8 +642,12 @@ export async function installTela(host: string, onLine?: (line: string) => void)
 }
 /** "Refazer do zero" do tutorial da guarda: tira o plugin do OpenClaw e apaga a cópia. */
 export async function uninstallGuarda(host: string): Promise<InstallBackendResult> {
-  if (host === LOCAL_HOST) return { ok: true, log: ["nada a desfazer neste Mac"] };
   const dir = backendBundleDir();
+  if (host === LOCAL_HOST) {
+    const r = await run("/bin/bash", ["-c", scriptLocal(`bash '${path.join(dir, "uninstall-guarda.sh")}' 2>&1\n`)], 2 * 60_000);
+    if (r.code !== 0) return { ok: false, log: [lastLine(r.stdout) || lastLine(r.stderr) || `código ${r.code ?? "timeout"}`] };
+    return { ok: true, log: r.stdout.trim().split("\n") };
+  }
   // A subpasta pode não existir numa máquina que ainda tem o jeito antigo (tudo solto).
   const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${stageDe("guarda")}`], 20_000);
   if (mk.code !== 0) return { ok: false, log: [`falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
