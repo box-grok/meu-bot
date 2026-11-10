@@ -64,6 +64,8 @@ export interface PickerSource {
   hosts(): string[];
   /** meu-bot-admin: as pessoas; null no meu-bot normal. */
   support(): PickerInit["support"];
+  /** O host que "Abrir" abre de fato (o admin troca "local" pelo alias de suporte deste Mac); sem isso, o próprio. */
+  abrirComo?(host: string): Promise<string>;
   /** Handlers só desta variante (os comuns ficam em initPicker). */
   registerIpc(ctx: PickerIpcContext): void;
 }
@@ -441,10 +443,12 @@ export function initPicker(src: PickerSource): void {
     broadcast("settings:changed", settingsView());
     probes.delete(host);
   });
-  handleShared("picker:choose", (event, payload: unknown) => {
+  handleShared("picker:choose", async (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     if (!podeAbrirMaquina()) throw new Error("entre com sua conta meu-bot para abrir uma máquina");
-    const host = hostArg(payload);
+    const escolhido = hostArg(payload);
+    const abrirComo = current().abrirComo;
+    const host = abrirComo === undefined ? escolhido : await abrirComo(escolhido);
     setLastHost(host);
     lastError = null;
     preselectOverride = null;

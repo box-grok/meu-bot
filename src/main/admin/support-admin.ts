@@ -316,6 +316,41 @@ async function adoptSshHost(host: string): Promise<SupportCode> {
   return { v: 1, name: host.slice(0, 40), ...target, hostKey, state: "on", at: new Date().toISOString(), ...(/^[A-Za-z0-9._-]{1,64}$/.test(host) ? { machine: host } : {}) };
 }
 
+/** Este Mac como pessoa do suporte: o próprio usuário, por SSH em 127.0.0.1 (Sessão remota do macOS). */
+const ESTE_MAC = { name: "este Mac", hostname: "127.0.0.1", port: 22, machine: "este-mac" } as const;
+const ehEsteMac = (c: SupportCode): boolean => c.hostname === ESTE_MAC.hostname && c.user === os.userInfo().username && c.port === ESTE_MAC.port;
+/** Alias de suporte deste Mac, se ele já é pessoa (e com o suporte ligado); null se ainda não. */
+export function aliasDoEsteMac(): string | null {
+  const s = [...load().values()].find((v) => ehEsteMac(v.code) && v.code.state === "on");
+  return s === undefined ? null : supportAlias(s.code);
+}
+
+/**
+ * "este Mac" no seletor do admin: o Mac do admin vira uma pessoa do suporte, como qualquer outra (espelho, saúde,
+ * registros, ações), só que por SSH em 127.0.0.1. Instala a chave do admin no authorized_keys deste usuário direto no
+ * disco (é a mesma conta; o adoptScript roda local, sem SSH) e lê a chave do sshd deste Mac. Sem preparar: os apps
+ * deste Mac já têm Claude Code e backend. Precisa da Sessão remota ligada (Ajustes › Geral › Compartilhamento).
+ */
+export async function esteMacComoPessoa(): Promise<string> {
+  const ja = aliasDoEsteMac();
+  if (ja !== null) return ja;
+  if (!fs.existsSync(`${ADMIN_KEY}.pub`)) throw new Error("falta a chave ~/.ssh/meu-bot-admin.pub deste admin");
+  const r = spawnSync("/bin/bash", ["-c", adoptScript({ nome: adminName(), chave: fs.readFileSync(`${ADMIN_KEY}.pub`, "utf8") })], { encoding: "utf8", timeout: 15_000 });
+  if (r.status !== 0) throw new Error(`não consegui pôr a chave do admin neste Mac: ${(r.stderr || r.stdout || "").trim().split("\n").pop() ?? "?"}`);
+  const hostKey = parseAdoptHostKey(r.stdout);
+  if (hostKey === null) throw new Error("este Mac não tem a chave ed25519 do servidor SSH");
+  const code: SupportCode = { v: 1, name: ESTE_MAC.name, hostname: ESTE_MAC.hostname, user: os.userInfo().username, port: ESTE_MAC.port, hostKey, state: "on", at: new Date().toISOString(), machine: ESTE_MAC.machine };
+  const m = load();
+  m.set(machineId(code), { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "" });
+  save(m);
+  writeSshFiles(m);
+  const alias = supportAlias(code);
+  const t = await runSsh(alias, "true\n", 20_000);
+  if (t.code !== 0) throw new Error(`este Mac entrou na lista, mas o SSH local não abriu (ligue a Sessão remota em Ajustes do Sistema › Geral › Compartilhamento): ${lastLine(t)}`);
+  log(`[este Mac] virou pessoa do suporte: ${alias}`);
+  return alias;
+}
+
 /** Apelido do admin para a pessoa (vence o nome que veio no código; vazio tira). O alias não muda. */
 export async function renamePerson(alias: string, nickname: string): Promise<SupportPerson[]> {
   const m = load();
