@@ -12,8 +12,13 @@ import { saudeStaging } from "./release-core.mjs";
 const APP = "meu-bot-staging";
 const ler = (f) => { try { return readFileSync(f, "utf8"); } catch { return null; } };
 
+/** O meu-bot-staging deste Mac: o de ~/Applications (o que o --instalar põe) ou, sem ele, o de /Applications (o do .dmg). */
+export function bundleDoStaging(home = homedir(), raizes = [join(home, "Applications"), "/Applications"]) {
+  return raizes.map((r) => join(r, `${APP}.app`)).find((b) => existsSync(b)) ?? join(raizes[0], `${APP}.app`);
+}
+
 export function saudeDesteMac(versao, home = homedir()) {
-  const bundle = join(home, "Applications", `${APP}.app`);
+  const bundle = bundleDoStaging(home);
   let plistVersao = null;
   if (existsSync(bundle)) { try { plistVersao = execFileSync("plutil", ["-extract", "CFBundleShortVersionString", "raw", join(bundle, "Contents", "Info.plist")], { encoding: "utf8" }).trim(); } catch { plistVersao = null; } }
   let origem = null; try { origem = JSON.parse(ler(join(bundle, "Contents", "Resources", "build.json")) ?? "{}").origem ?? null; } catch { /* sem build.json */ }

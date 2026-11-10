@@ -20,7 +20,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dataPorExtenso, decideRodada, fecharChangelog, proximaBase, stagingMaisNovo } from "./release-core.mjs";
-import { saudeDesteMac } from "./release-saude.mjs";
+import { bundleDoStaging, saudeDesteMac } from "./release-saude.mjs";
 
 const AQUI = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const HOME = homedir();
@@ -144,9 +144,9 @@ function rodada() {
     if (decisao.acao === "aguardar") {
       if (estado.ultimoMotivo !== decisao.motivo) { log(`aguardando: ${decisao.motivo}`); gravarEstado({ ...estado, ultimoMotivo: decisao.motivo }); }
       // O staging só se atualiza aberto: abre escondido (ele troca sozinho com o Mac ocioso e confirma em 30 s).
-      if (decisao.abrirStaging && existsSync(join(HOME, "Applications", "meu-bot-staging.app")) && !aberto("meu-bot-staging") && !/voltou para a anterior/.test(decisao.motivo)) {
+      if (decisao.abrirStaging && existsSync(bundleDoStaging(HOME)) && !aberto("meu-bot-staging") && !/voltou para a anterior/.test(decisao.motivo)) {
         log(`abrindo o meu-bot-staging escondido para ele receber a ${tag}`);
-        spawnSync("open", ["-g", "-j", join(HOME, "Applications", "meu-bot-staging.app")]);
+        spawnSync("open", ["-g", "-j", bundleDoStaging(HOME)]);
       }
       if (/voltou para a anterior/.test(decisao.motivo) && estado.avisadoVolta !== tag) { avisar("staging não ficou de pé", decisao.motivo); gravarEstado({ ...lerEstado(), avisadoVolta: tag }); }
       return;
