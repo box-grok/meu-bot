@@ -34,9 +34,9 @@ import { noteNetworkError } from "../app/net";
 import { evento } from "../app/depuracao";
 import { offlineMessage } from "../app/net-core";
 import {
-  abaixoDaMinima, alvosParaTrocar, candidataDe, decideIdentidade, requisitoDeveloperId, assetName, CHECK_EVERY_MS, classificarRespostaFeed, compareVersions, decideAlvoAplicacao, decideFimDaEspera, CONFIRMA_FEED_MS, decideDescarte, decideReaproveitar, decideReconfirmacao, decideReinicioOcioso, decideRollback, escolherRelease, motivoManterTexto, motivoReleaseTexto, OCIOSO_SEG, parsePendente, parsePreparada, parseVersaoMinima,
+  abaixoDaMinima, alvosParaTrocar, candidataDe, decideAplicacaoEscolhida, decideInstalarListada, deveVerificarSozinho, listarReleases, parseFixada, podeTrocarComFixada, decideIdentidade, requisitoDeveloperId, assetName, CHECK_EVERY_MS, classificarRespostaFeed, compareVersions, decideAlvoAplicacao, decideFimDaEspera, CONFIRMA_FEED_MS, decideDescarte, decideReaproveitar, decideReconfirmacao, decideReinicioOcioso, decideRollback, escolherRelease, motivoManterTexto, motivoReleaseTexto, OCIOSO_SEG, parsePendente, parsePreparada, parseVersaoMinima,
   pastaSoLeitura, proximaVerificacaoMs, releasesUrl, repararTroca, TENTATIVAS_ATE_VOLTAR, TRAVA_VELHA_MS, travaAbandonada, verificaAssinatura,
-  type EscolhaRelease, type EstadoSistema, type UpdateCandidate, type UpdateGatilho, type UpdatePendente, type UpdatePreparada,
+  type EscolhaRelease, type EstadoSistema, type ReleaseListada, type UpdateFixada, type UpdateCandidate, type UpdateGatilho, type UpdatePendente, type UpdatePreparada,
 } from "./updater-core";
 
 import type { UpdateErrorKind, UpdatePhase, UpdateState, UpdateTrigger } from "../../shared/ipc";
@@ -55,7 +55,7 @@ const OCIOSO_POLL_MS = 60_000;
 /** Falha com a causa para a tela (`errorKind`); as frases são as que a pessoa vê. */
 class UpdateFalha extends Error { constructor(public readonly kind: UpdateErrorKind, msg: string) { super(msg); this.name = "UpdateFalha"; } }
 
-const state: UpdateState = { current: app.getVersion(), available: null, ready: null, checking: false, error: null, errorKind: null, phase: "idle", checkedAt: null, progress: null, aguardando: false, ocupadoAoAplicar: false, minima: null, abaixoDaMinima: false, atualizarOcioso: true, buildLocal: false, commit: "", arch: process.arch === "arm64" ? "arm64" : "x64" };
+const state: UpdateState = { current: app.getVersion(), available: null, ready: null, checking: false, error: null, errorKind: null, phase: "idle", checkedAt: null, progress: null, aguardando: false, ocupadoAoAplicar: false, minima: null, abaixoDaMinima: false, atualizarOcioso: true, fixada: null, buildLocal: false, commit: "", arch: process.arch === "arm64" ? "arm64" : "x64" };
 /** A versão preparada em disco (preparada.json); null = nada pronto. */
 let preparada: UpdatePreparada | null = null;
 let timer: NodeJS.Timeout | null = null;
@@ -68,7 +68,7 @@ let abort: AbortController | null = null;
 const minimaPorHost = new Map<string, string>();
 let ligado = false;
 
-export const updateState = (): UpdateState => ({ ...state, atualizarOcioso: getAtualizarOcioso(), buildLocal: compilacao().origem === "local", commit: compilacao().commit, arch: arch() });
+export const updateState = (): UpdateState => ({ ...state, atualizarOcioso: getAtualizarOcioso(), fixada: fixada === null ? null : { versao: fixada.versao, por: fixada.por }, buildLocal: compilacao().origem === "local", commit: compilacao().commit, arch: arch() });
 /** O que o menu do aplicativo precisa saber: a versão pronta e se dá para pedir uma verificação agora. */
 export const updateMenuState = (): { pronta: string | null; podeVerificar: boolean; buildLocal: boolean } => ({
   buildLocal: compilacao().origem === "local",
@@ -106,7 +106,30 @@ const plist = async (bundle: string, key: string): Promise<string | null> => { t
 const requisito = async (bundle: string): Promise<string | null> => {
   try { const r = await run("codesign", ["-d", "-r-", bundle], { timeoutMs: 60_000 }); return /designated => (.+)/.exec(`${r.stdout}\n${r.stderr}`)?.[1]?.trim() ?? null; } catch { return null; }
 };
-const ativo = (): boolean => app.isPackaged && process.env.MEU_BOT_NO_UPDATE !== "1" && runningBundle() !== null;
+/**
+ * `MEU_BOT_NO_UPDATE=1` desliga o atualizador. A troca para uma versão fixada pelo super admin reinicia com ele e com
+ * `MEU_BOT_NO_UPDATE_MOTIVO=fixada`: uma versão anterior a este recurso só entende o primeiro e fica parada na
+ * sessão; esta entende os dois e segue ligada (a fixação dela vem do arquivo).
+ */
+const desligadoPorAmbiente = (): boolean => process.env.MEU_BOT_NO_UPDATE === "1" && process.env.MEU_BOT_NO_UPDATE_MOTIVO !== "fixada";
+const ativo = (): boolean => app.isPackaged && !desligadoPorAmbiente() && runningBundle() !== null;
+
+/* ---------- versão fixada (super admin) ---------- */
+
+const fixadaFile = (): string => path.join(app.getPath("userData"), "update-fixada.json");
+let fixada: UpdateFixada | null = null;
+const versaoFixada = (): string | null => fixada?.versao ?? null;
+function lerFixada(): void {
+  try { fixada = parseFixada(JSON.parse(fs.readFileSync(fixadaFile(), "utf8"))); } catch { fixada = null; }
+  // Aberto noutra versão que não a fixada: a anterior a este recurso se atualizou sozinha ao ser reaberta, ou a troca
+  // não pegou. A fixação não segurou; mantê-la deixaria o app parado numa versão que ninguém escolheu.
+  if (fixada !== null && fixada.versao !== state.current) {
+    log(`[atualização] a versão fixada era a ${fixada.versao}, mas abriu a ${state.current}: soltei a fixação`);
+    registrar("fixar", false, "a fixação não segurou", { fixada: fixada.versao, aberta: state.current });
+    soltarArquivoFixada();
+  }
+}
+function soltarArquivoFixada(): void { fixada = null; try { fs.rmSync(fixadaFile(), { force: true }); } catch { /* ok */ } }
 
 /* ---------- ciclo de vida ---------- */
 
@@ -114,7 +137,10 @@ const ativo = (): boolean => app.isPackaged && process.env.MEU_BOT_NO_UPDATE !==
 export function initUpdater(): void {
   if (!app.isPackaged || runningBundle() === null) return;
   conferirPendente();
-  if (process.env.MEU_BOT_NO_UPDATE === "1") return;
+  if (desligadoPorAmbiente()) return;
+  // Vieram da troca para a versão fixada: não passam adiante para os próximos reinícios.
+  if (process.env.MEU_BOT_NO_UPDATE_MOTIVO === "fixada") { delete process.env.MEU_BOT_NO_UPDATE; delete process.env.MEU_BOT_NO_UPDATE_MOTIVO; }
+  lerFixada();
   ligado = true;
   void reaproveitarPreparada().finally(() => { agendar(FIRST_CHECK_MS, "inicio"); });
   ociosoTimer = setInterval(() => { void tentarReinicioOcioso(); }, OCIOSO_POLL_MS);
@@ -151,6 +177,8 @@ export async function checkNow(trigger: UpdateTrigger = "explicito"): Promise<Up
 export async function atualizarAgora(): Promise<UpdateState> {
   if (!ativo()) return updateState();
   if (state.phase === "applying") return updateState();
+  // Pedir a mais nova é a intenção explícita de sair da versão fixada.
+  if (fixada !== null) { log(`[atualização] "Atualizar agora" solta a fixação na ${fixada.versao}`); soltarArquivoFixada(); publish(); }
   await check("atualizar-agora");
   if (state.phase !== "ready" || state.ready === null) {
     registrar("atualizar-agora", state.phase === "up-to-date", state.phase === "up-to-date" ? "já na mais recente" : (state.error ?? state.phase));
@@ -160,6 +188,80 @@ export async function atualizarAgora(): Promise<UpdateState> {
   await applyUpdate(state.ready, "clique");
   return updateState();
 }
+/* ---------- versões publicadas (super admin) ---------- */
+
+/** Lista do GitHub em cache por 1 min: abrir e fechar a seção não gasta as 60 consultas/hora sem token. */
+let listaCache: { em: number; itens: ReleaseListada[] } | null = null;
+const LISTA_CACHE_MS = 60_000;
+/** Quem pode usar: conferido no main, com o papel relido do servidor (GET /conta) na hora. */
+let exigeSuper: () => Promise<string> = () => Promise.reject(new Error("só um super admin pode escolher a versão"));
+export const onExigeSuper = (fn: () => Promise<string>): void => { exigeSuper = fn; };
+/** Antes de voltar para uma versão mais velha: guarda as configurações que ela apagaria (settings.ts restaura na volta). */
+let antesDeVoltar: (de: string) => void = () => undefined;
+export const onAntesDeVoltar = (fn: (de: string) => void): void => { antesDeVoltar = fn; };
+
+export async function releasesPublicadas(forcar = false): Promise<ReleaseListada[]> {
+  await exigeSuper();
+  if (!ativo()) throw new Error("a escolha de versão só funciona no app instalado");
+  if (!forcar && listaCache !== null && Date.now() - listaCache.em < LISTA_CACHE_MS) return listaCache.itens;
+  const res = await fetch("https://api.github.com/repos/diegofornalha/meu-bot/releases?per_page=30", { headers: { "User-Agent": `${appTitle()}/${state.current}`, Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(FEED_TIMEOUT_MS) });
+  const r = classificarRespostaFeed(res.status, res.headers.get("x-ratelimit-remaining"), res.headers.get("x-ratelimit-reset"));
+  if (r.tipo === "falha") throw new Error(r.msg);
+  const corpo: unknown = r.tipo === "sem-release" ? [] : await res.json();
+  const itens = listarReleases(corpo, { app: appTitle(), arch: arch(), current: state.current, canal: caps().canal, minima: state.minima });
+  listaCache = { em: Date.now(), itens };
+  return itens;
+}
+
+/**
+ * "Instalar esta" (super admin): fixa a versão escolhida, baixa e confere como qualquer atualização (assinatura,
+ * bundle id, codesign) e troca. Mais velha inclusive: é o único caminho para trás, e as configurações que ela não
+ * conhece ficam guardadas para voltar. Com uma resposta em andamento, cai no "Parar e atualizar" de sempre.
+ */
+export async function instalarVersao(versao: string): Promise<UpdateState> {
+  const email = await exigeSuper();
+  if (!ativo()) throw new Error("a escolha de versão só funciona no app instalado");
+  if (state.phase === "applying") throw new Error("já há uma troca em andamento");
+  const d = decideInstalarListada((await releasesPublicadas(true)).find((l) => l.versao === versao));
+  if (d.tipo === "recusar") { registrar("escolher-versao", false, d.motivo, { versao }); throw new Error(d.motivo); }
+  if (inflight !== null) await inflight;
+  abort?.abort();
+  const anterior = fixada;
+  fixada = { versao, por: email, em: new Date().toISOString() };
+  gravarJson(fixadaFile(), fixada);
+  log(`[atualização] ${email} escolheu a ${versao} (instalada: ${state.current}): versão fixada`);
+  registrar("escolher-versao", true, `fixada na ${versao}`, { de: state.current, por: email });
+  const ac = new AbortController(); abort = ac;
+  try {
+    state.error = null; state.errorKind = null; state.available = versao;
+    if (preparada !== null && preparada.para !== versao) limparPreparada();
+    if (preparada === null) { setPhase("available"); await preparar(d.candidata, ac.signal); }
+    setPhase("ready");
+  } catch (e) {
+    // Não deu para preparar: a fixação volta a ser a de antes (ou nenhuma) para o app não ficar parado à toa.
+    fixada = anterior; if (anterior === null) soltarArquivoFixada(); else gravarJson(fixadaFile(), anterior);
+    const f = await classificar(e); state.error = f.msg; state.errorKind = f.kind; setPhase("error");
+    registrar("escolher-versao", false, f.msg, { versao });
+    throw new Error(f.msg);
+  } finally { if (abort === ac) abort = null; }
+  if (compareVersions(versao, state.current) < 0) {
+    try { antesDeVoltar(state.current); } catch (e) { log(`[atualização] não guardei as configurações antes de voltar: ${erroTexto(e)}`); }
+  }
+  // Uma versão anterior a este recurso não lê update-fixada.json: sem isto ela se atualizaria sozinha ao abrir.
+  process.env.MEU_BOT_NO_UPDATE = "1"; process.env.MEU_BOT_NO_UPDATE_MOTIVO = "fixada";
+  await applyUpdate(versao, "clique");
+  return updateState();
+}
+
+/** "Voltar a atualizar sozinho": solta a versão fixada e verifica na hora. */
+export async function soltarFixada(): Promise<UpdateState> {
+  if (fixada === null) return updateState();
+  log(`[atualização] fixação na ${fixada.versao} solta`);
+  registrar("fixar", true, "solta", { versao: fixada.versao });
+  soltarArquivoFixada(); publish();
+  return checkNow("explicito");
+}
+
 /** Ao acordar o Mac ou voltar a internet: só se a última verificação ficou velha (o ciclo normal cobre o resto). */
 export function checkIfStale(trigger: UpdateTrigger): void {
   if (!ativo() || !ligado) return;
@@ -169,6 +271,8 @@ export function checkIfStale(trigger: UpdateTrigger): void {
 
 function check(trigger: UpdateTrigger): Promise<void> {
   if (inflight !== null) return inflight;
+  // Versão fixada pelo super admin: o ciclo não consulta; o pedido explícito consulta e só mostra (não prepara).
+  if (!deveVerificarSozinho(versaoFixada(), trigger)) { agendar(proximaVerificacaoMs(), "periodico"); return Promise.resolve(); }
   inflight = (async () => {
     if (timer !== null) { clearTimeout(timer); timer = null; }
     state.error = null; state.errorKind = null; setPhase("checking");
@@ -194,6 +298,7 @@ function check(trigger: UpdateTrigger): Promise<void> {
         state.available = null; registrar("verificar", true, "nada mais novo", { trigger }); setPhase("up-to-date"); return;
       }
       state.available = cand.version;
+      if (fixada !== null) { registrar("verificar", true, `há a ${cand.version}, mas a versão está fixada na ${fixada.versao}`, { trigger }); setPhase("up-to-date"); return; }
       if (preparada !== null && preparada.para === cand.version) { setPhase("ready"); return; }
       if (preparada !== null) { log(`[atualização] ${preparada.para} preparada, mas a release oferece ${cand.version}: preparando a nova`); limparPreparada(); }
       setPhase("available");
@@ -328,7 +433,7 @@ async function conferirBundle(bundle: string): Promise<void> {
 async function reaproveitarPreparada(): Promise<void> {
   let lido: unknown;
   try { lido = JSON.parse(fs.readFileSync(preparadaFile(), "utf8")); } catch { return; } // nada preparado: o normal
-  const uso = decideReaproveitar(parsePreparada(lido), state.current, (b) => fs.existsSync(path.join(b, "Contents", "Info.plist")));
+  const uso = decideReaproveitar(parsePreparada(lido), state.current, (b) => fs.existsSync(path.join(b, "Contents", "Info.plist")), versaoFixada());
   if (uso.tipo === "descartar") { log(`[atualização] descartei o que estava preparado: ${motivoPreparadaTexto(uso.motivo)}`); limparPreparada(); return; }
   const p = uso.preparada;
   try {
@@ -372,15 +477,18 @@ function limparPreparada(): void {
 export async function applyUpdate(expectedVersion: string, gatilho: Exclude<UpdateGatilho, "saida">, forcar = false): Promise<void> {
   if (inflight !== null) await inflight; // uma verificação no meio pode ter trocado a versão pronta
   if (preparada === null || state.ready === null) throw new Error("não há atualização pronta");
+  // A versão que o super admin escolheu (fixada) pode ser mais velha: só precisa ser exatamente a pedida, e a release
+  // não é reconsultada (para trás ela nunca "ofereceria" esta). A assinatura e o codesign já foram conferidos.
+  const escolhida = fixada !== null && state.ready === fixada.versao;
   // Se ficou pronta uma versão MAIS NOVA entre o clique e agora, o diálogo acompanha em vez de recusar: é a mesma
   // intenção, e a nova já passou pela assinatura e pelo codesign. Para trás, não.
-  const alvo = decideAlvoAplicacao(expectedVersion, state.ready);
+  const alvo = escolhida ? decideAplicacaoEscolhida(expectedVersion, state.ready) : decideAlvoAplicacao(expectedVersion, state.ready);
   if (alvo.tipo === "recusar") { registrar("aplicar", false, alvo.motivo, { pedida: expectedVersion, pronta: state.ready }); throw new Error(alvo.motivo); }
   if (alvo.trocou) log(`[atualização] você pediu a ${expectedVersion} e a ${alvo.versao} ficou pronta no meio: sigo na mais nova`);
   const expectedVersao = alvo.versao;
   if (state.phase === "applying") return;
   const idade = state.checkedAt === null ? Number.POSITIVE_INFINITY : Date.now() - Date.parse(state.checkedAt);
-  if (idade > CONFIRMA_FEED_MS) {
+  if (!escolhida && idade > CONFIRMA_FEED_MS) {
     // Reconfirma só a release (sem preparar outra): retirada do ar, nada muda; sem internet, a preparada já conferida vale.
     let escolha: EscolhaRelease | null = null;
     try { escolha = await consultarFeed(new AbortController().signal); state.checkedAt = new Date().toISOString(); } catch (e) { log(`[atualização] não deu para reconfirmar no GitHub (${erroTexto(e)}); sigo com a ${expectedVersion} já conferida`); }
@@ -559,19 +667,19 @@ function desfazerTroca(antigos: readonly string[]): void {
 
 /** Ao sair do app com uma atualização pronta, troca calado: a próxima abertura já é a nova. */
 export function applyStagedOnQuit(): void {
-  if (preparada === null) return;
+  if (preparada === null || !podeTrocarComFixada(versaoFixada(), preparada.para)) return;
   try { swapBundles("saida"); } catch (e) { log(`[atualização] ao sair: ${erroTexto(e)}`); }
 }
 
 /* ---------- reinício ocioso ---------- */
 
 async function tentarReinicioOcioso(): Promise<void> {
-  if (!ligado || state.phase !== "ready" || state.ready === null) return;
+  if (!ligado || state.phase !== "ready" || !podeTrocarComFixada(versaoFixada(), state.ready)) return;
   let sistema: EstadoSistema = "unknown";
   try { sistema = powerMonitor.getSystemIdleState(OCIOSO_SEG); } catch { /* fica unknown */ }
   if (!decideReinicioOcioso({ ligado: getAtualizarOcioso(), pronta: true, sistema, ocupado: anyConversationBusy(), terminais: liveTerminals().length })) return;
   log(`[atualização] Mac ${sistema === "locked" ? "bloqueado" : "ocioso"} e nada em andamento: reiniciando na ${state.ready}`);
-  try { await applyUpdate(state.ready, "ocioso"); } catch (e) { log(`[atualização] reinício ocioso não aconteceu: ${erroTexto(e)}`); }
+  try { await applyUpdate(state.ready as string, "ocioso"); } catch (e) { log(`[atualização] reinício ocioso não aconteceu: ${erroTexto(e)}`); }
 }
 
 /* ---------- versão mínima ---------- */

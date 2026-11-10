@@ -7,7 +7,8 @@ import { clampZoom } from "./zoom-core";
 import {
   defaultSettings, emptyWorkspaces, isAbaFixa, isBackendModel, isBudget, isEvery, isOnboarding, isPort, isTheme, isValidHost, normalizeNavWorkspaces, normalizeSettings,
   type SettingsFile,
- normalizeFavoritos, type NavFavoritoItem } from "./settings-normalize";
+ normalizeFavoritos, mesclarCamposPerdidos, type NavFavoritoItem } from "./settings-normalize";
+import { compareVersions } from "../atualizacao/updater-core";
 
 export { BACKEND_MODELS, isBackendModel, isValidHost } from "./settings-normalize";
 
@@ -18,9 +19,34 @@ let file: SettingsFile = defaultSettings();
 
 const settingsPath = (): string => path.join(app.getPath("userData"), "settings.json");
 
+/** Backup feito antes de o super admin voltar para uma versão mais velha (ela regrava o arquivo sem os campos novos). */
+const backupVoltaPath = (): string => path.join(app.getPath("userData"), "settings.antes-de-voltar.json");
+/** Guarda o settings.json como está, com a versão de onde se saiu. */
+export function guardarAntesDeVoltar(de: string): void {
+  if (!fs.existsSync(settingsPath())) return;
+  const tmp = `${backupVoltaPath()}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify({ de, settings: JSON.parse(fs.readFileSync(settingsPath(), "utf8")) as unknown }), { mode: 0o600 });
+  fs.renameSync(tmp, backupVoltaPath());
+}
+/**
+ * De volta numa versão igual ou mais nova que a de onde se saiu: os campos que a versão velha apagou voltam (só os que
+ * faltam) e o backup sai. Numa versão ainda mais velha que essa, o backup fica esperando.
+ */
+function restaurarDepoisDeVoltar(raw: unknown): unknown {
+  let b: { de?: unknown; settings?: unknown };
+  try { b = JSON.parse(fs.readFileSync(backupVoltaPath(), "utf8")) as typeof b; } catch { return raw; }
+  if (typeof b.de !== "string" || compareVersions(app.getVersion(), b.de) < 0) return raw;
+  const out = mesclarCamposPerdidos(raw, b.settings);
+  try { fs.rmSync(backupVoltaPath(), { force: true }); } catch { /* ok */ }
+  return out;
+}
+
 export function loadSettings(): void {
   try {
-    file = normalizeSettings(JSON.parse(fs.readFileSync(settingsPath(), "utf8")));
+    const raw: unknown = JSON.parse(fs.readFileSync(settingsPath(), "utf8"));
+    const restaurado = restaurarDepoisDeVoltar(raw);
+    file = normalizeSettings(restaurado);
+    if (restaurado !== raw) persist();
   } catch {
     // Instalação nova (nem há settings.json): o controle externo (MCP) já nasce ligado, só em 127.0.0.1 e com token.
     // Quem já tinha o app (arquivo existe, com ou sem a chave) segue com o que está gravado, que é desligado.

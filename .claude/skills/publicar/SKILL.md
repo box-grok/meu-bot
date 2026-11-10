@@ -96,6 +96,9 @@ Publique do checkout principal só se ele estiver limpo e no `origin/main`; sen�
   menu do app), que verifica, baixa e reinicia; no staging a faixa "pronta para instalar" não aparece. Se nem assim:
   o build instalado é local (a tela diz "Build local do commit …" e o botão fica desligado; passo 1), a release não
   tem o `.sig`, ou a assinatura não confere (log `[atualização]` em `~/Library/Application Support/<app>/meu-bot.log`).
+- Versão nova com defeito numa pessoa: um super admin (conta com o papel no console) abre Configurações › Sobre e
+  atualização › Versões publicadas e instala a anterior; ela fica fixada até "Voltar a atualizar sozinho". Numa versão
+  anterior ao seletor, a fixação dura só até fechar o app (o código velho não a conhece).
 - Máquina não atualizou: a versão do componente não subiu, o backend estava ocupado (tenta na próxima sondagem) ou
   o instalador falhou (log `[backend]`/`[finance]` no mesmo arquivo).
 - Versão nova não abre: depois de 3 aberturas sem ficar 30 s de pé, o app volta sozinho para a anterior.

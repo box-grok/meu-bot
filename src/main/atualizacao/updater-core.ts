@@ -171,7 +171,8 @@ export function escolherRelease(raw: unknown, want: { app: string; arch: string;
   return problema === null ? NADA_NOVO : inutilizavel(problema.versao, problema.motivo);
 }
 
-function avaliarRelease(raw: unknown, want: { app: string; arch: string; current: string }, staging: boolean): EscolhaRelease {
+/** `comparar` = false (a lista do super admin): a release vale mesmo sendo a atual ou mais velha. */
+function avaliarRelease(raw: unknown, want: { app: string; arch: string; current: string }, staging: boolean, comparar = true): EscolhaRelease {
   if (raw === null || typeof raw !== "object") return inutilizavel(null, "corpo-inesperado");
   const r = raw as { tag_name?: unknown; draft?: unknown; prerelease?: unknown; assets?: unknown };
   if (typeof r.tag_name !== "string") return inutilizavel(null, "corpo-inesperado");
@@ -181,7 +182,7 @@ function avaliarRelease(raw: unknown, want: { app: string; arch: string; current
   // Na lista do staging, uma tag de outro formato é só outra coisa publicada no repositório; no estável,
   // a /releases/latest com uma tag que não reconhecemos é problema que a pessoa precisa saber.
   if (staging ? !STAGING_TAG.test(r.tag_name) : !/^\d+(\.\d+){0,3}$/.test(version)) return staging ? NADA_NOVO : inutilizavel(null, "tag-inesperada");
-  if (compareVersions(version, want.current) <= 0) return NADA_NOVO;
+  if (comparar && compareVersions(version, want.current) <= 0) return NADA_NOVO;
   // Uma entrada estragada no meio da lista do staging é ruído; na /releases/latest é a resposta inteira.
   if (!Array.isArray(r.assets)) return staging ? NADA_NOVO : inutilizavel(version, "corpo-inesperado");
   const name = assetName(want.app, version, want.arch);
@@ -203,6 +204,73 @@ function avaliarRelease(raw: unknown, want: { app: string; arch: string; current
   if (sig === null) return inutilizavel(version, "sem-assinatura");
   return { tipo: "candidata", candidata: { version, asset, sig } };
 }
+
+/**
+ * Uma linha da lista de releases do super admin (Configurações › Sobre e atualização › Versões publicadas).
+ * `candidata` null = publicada, mas não dá para instalar (`motivo` diz por quê); `abaixoDaMinima` = o backend da
+ * máquina exige uma mais nova, e ela abriria direto na tela "Atualização necessária".
+ */
+export interface ReleaseListada {
+  versao: string;
+  publicadaEm: string | null;
+  candidata: UpdateCandidate | null;
+  motivo: MotivoRelease | null;
+  relacao: "atual" | "mais-nova" | "mais-velha";
+  abaixoDaMinima: boolean;
+}
+/**
+ * Todas as releases do canal deste app na lista /releases (mais nova primeiro), inclusive a atual e as mais velhas.
+ * As mesmas regras do feed (canal pelo `prerelease`, tag, asset desta arquitetura, `.sig` ao lado), sem a regra de
+ * "só mais nova": é o único caminho para trás, e por isso só o super admin chega aqui.
+ */
+export function listarReleases(raw: unknown, want: { app: string; arch: string; current: string; canal: "estavel" | "staging"; minima: string | null }): ReleaseListada[] {
+  if (!Array.isArray(raw)) return [];
+  const staging = want.canal === "staging";
+  const vistas = new Map<string, ReleaseListada>();
+  for (const r of raw) {
+    const e = avaliarRelease(r, want, staging, false);
+    const versao = e.tipo === "candidata" ? e.candidata.version : e.tipo === "inutilizavel" ? e.versao : null;
+    if (versao === null || vistas.has(versao)) continue;
+    const pub = (r as { published_at?: unknown } | null)?.published_at;
+    const d = compareVersions(versao, want.current);
+    vistas.set(versao, {
+      versao,
+      publicadaEm: typeof pub === "string" && !Number.isNaN(Date.parse(pub)) ? pub : null,
+      candidata: e.tipo === "candidata" ? e.candidata : null,
+      motivo: e.tipo === "inutilizavel" ? e.motivo : null,
+      relacao: d === 0 ? "atual" : d > 0 ? "mais-nova" : "mais-velha",
+      abaixoDaMinima: abaixoDaMinima(versao, want.minima),
+    });
+  }
+  return [...vistas.values()].sort((a, b) => compareVersions(b.versao, a.versao));
+}
+/** Pode instalar esta linha? Só a que tem candidata, não é a atual e não fica abaixo da mínima do backend. */
+export function decideInstalarListada(l: ReleaseListada | undefined): { tipo: "instalar"; candidata: UpdateCandidate } | { tipo: "recusar"; motivo: string } {
+  if (l === undefined) return { tipo: "recusar", motivo: "essa versão não está mais na lista de releases" };
+  if (l.relacao === "atual") return { tipo: "recusar", motivo: `a ${l.versao} já é a instalada` };
+  if (l.abaixoDaMinima) return { tipo: "recusar", motivo: `a ${l.versao} é anterior à mínima que o backend desta máquina exige` };
+  if (l.candidata === null) return { tipo: "recusar", motivo: motivoReleaseTexto(l.versao, l.motivo ?? "corpo-inesperado") };
+  return { tipo: "instalar", candidata: l.candidata };
+}
+
+/**
+ * Versão fixada pelo super admin (`userData/update-fixada.json`, fora do settings.json para uma versão velha não
+ * apagar): o app para de se atualizar sozinho até alguém soltar.
+ */
+export interface UpdateFixada { versao: string; por: string; em: string }
+export function parseFixada(raw: unknown): UpdateFixada | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.versao !== "string" || !VERSAO_RE.test(o.versao) || typeof o.por !== "string" || typeof o.em !== "string" || Number.isNaN(Date.parse(o.em))) return null;
+  return { versao: o.versao, por: o.por, em: o.em };
+}
+/** Com versão fixada, só o pedido explícito (e a versão mínima do backend) consulta o GitHub; e só para mostrar. */
+export const deveVerificarSozinho = (fixada: string | null, trigger: string): boolean => fixada === null || trigger === "explicito" || trigger === "versao-minima";
+/** Trocar para `pronta` (ocioso, ao fechar, reaproveitar ao abrir) respeitando a fixação: só a própria versão fixada. */
+export const podeTrocarComFixada = (fixada: string | null, pronta: string | null): boolean => pronta !== null && (fixada === null || pronta === fixada);
+/** A troca escolhida pelo super admin só segue se a preparada é exatamente a pedida (para trás inclusive). */
+export const decideAplicacaoEscolhida = (pedida: string, pronta: string | null): AlvoAplicacao =>
+  pronta === pedida ? { tipo: "seguir", versao: pedida, trocou: false } : { tipo: "recusar", motivo: pronta === null ? "a versão escolhida não ficou pronta" : `a versão pronta é a ${pronta}, não a ${pedida} escolhida; tente de novo` };
 
 /**
  * Atualizar um componente que o app instala na máquina (a guarda do WhatsApp): só quando a versão que vem no app é
@@ -332,9 +400,10 @@ export const VERSAO_RE = /^\d+(\.\d+){1,3}(-[0-9A-Za-z.-]+)?$/;
  * de assinatura. "nao-e-mais-nova" cobre o caso de a pessoa ter instalado por fora no meio tempo.
  */
 export type UsoPreparada = { tipo: "usar"; preparada: UpdatePreparada } | { tipo: "descartar"; motivo: "ilegivel" | "nao-e-mais-nova" | "sumiu" };
-export function decideReaproveitar(p: UpdatePreparada | null, atual: string, existeBundle: (b: string) => boolean): UsoPreparada {
+export function decideReaproveitar(p: UpdatePreparada | null, atual: string, existeBundle: (b: string) => boolean, fixada: string | null = null): UsoPreparada {
   if (p === null) return { tipo: "descartar", motivo: "ilegivel" };
-  if (compareVersions(p.para, atual) <= 0) return { tipo: "descartar", motivo: "nao-e-mais-nova" };
+  // A versão fixada pelo super admin vale mesmo sendo mais velha; com fixação, nenhuma outra.
+  if (fixada !== null ? p.para !== fixada || p.para === atual : compareVersions(p.para, atual) <= 0) return { tipo: "descartar", motivo: "nao-e-mais-nova" };
   if (!existeBundle(p.bundle)) return { tipo: "descartar", motivo: "sumiu" };
   return { tipo: "usar", preparada: p };
 }

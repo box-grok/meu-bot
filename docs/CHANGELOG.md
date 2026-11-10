@@ -18,6 +18,11 @@ no [diário técnico](GUIA.md).
 - **WhatsApp na janela "Este Mac"**, pelo OpenClaw: o tutorial 3 instala o agente com um serviço do Mac (ele responde mesmo com o meu-bot fechado, enquanto o Mac estiver ligado), mostra o QR e conecta o número. O passo concluído diz qual agente ficou ("Agente: OpenClaw").
 - **Ouvir áudios neste Mac**: "Ativar transcrição" passa a valer aqui; os áudios do WhatsApp viram texto no próprio Mac, sem sair dele. Responder em áudio continua só nas máquinas.
 
+### Super admin: escolher a versão do app
+#### Novo
+- Quem entra com uma conta super admin vê em Configurações › Sobre e atualização a lista "Versões publicadas" do canal do app, e pode instalar qualquer uma delas, inclusive uma mais velha, para reproduzir um problema ou sair de uma versão com defeito. A versão escolhida fica fixada (o app para de se atualizar sozinho) até alguém clicar em "Voltar a atualizar sozinho". O papel é conferido com o servidor da conta a cada uso, e a assinatura de cada release continua obrigatória.
+- Ao voltar para uma versão mais velha, os ajustes que ela não conhece são guardados e voltam quando o app retorna a uma versão mais nova.
+
 ### Atualização: "Este Mac" volta funcionando depois de reiniciar na versão nova
 #### Corrigido
 - Depois de atualizar com a janela "Este Mac" aberta, o app reabria com "túnel instável: a porta já está em uso" e as conversas deste Mac não respondiam: o backend da versão anterior continuava rodando. Agora ele é encerrado antes da troca, e o app reaberto encerra sozinho um que tenha sobrado.

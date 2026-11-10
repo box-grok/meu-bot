@@ -2,7 +2,7 @@
 import type { BatimentoDepuracao, EstadoDepuracao, EventoDepuracao } from "./depuracao";
 import type { AccountStatus, AudioSetup, ClaudeAuthInfo, ClaudeLoginEvent, ContaEstado, ContaEvento, ContaId, ContasClaudeView, LinkPublicoInfo, LinkPublicoStatus, CotaInfo, LinkPublicoLista, LinkPublicoPublicado, FreedomLevel, LimiaresClaude, ObjectiveChoice, ObjectiveInfo, StatusLineSegments, XaiKeyStatus } from "./agente";
 import type { AlertPrefs, BackendModel, ControleRemotoView, DonoInfo, NetState, SettingsUpdate, SettingsView, WindowInfo, ZoomAction, ZoomState } from "./app";
-import type { UpdateState } from "./atualizacao";
+import type { ReleasePublicada, UpdateState } from "./atualizacao";
 import type { ContaView } from "./conta";
 import type { TelaEndereco, TelaInstalacao, TelaStatus } from "./computador";
 import type { ClaudeSessionRef, ContextEvent, ConversationRef, DoneEvent, ErrorEvent, ExportFormat, MemoryView, StoredConversationView, TabMenuAction, ToolEvent } from "./conversa";
@@ -156,6 +156,12 @@ export interface MeuBotSharedApi {
   checkUpdate(): Promise<UpdateState>;
   /** "Atualizar agora": verifica, baixa e reinicia na mais nova; devolve o estado quando não há o que instalar. */
   updateNow(): Promise<UpdateState>;
+  /** Versões publicadas do canal (só super admin; o main confere no servidor). */
+  updateReleases(forcar?: boolean): Promise<ReleasePublicada[]>;
+  /** Instala a versão escolhida, mais velha inclusive, e a deixa fixada (só super admin). */
+  updateInstalarVersao(versao: string): Promise<UpdateState>;
+  /** "Voltar a atualizar sozinho": solta a versão fixada e verifica. */
+  updateSoltarFixada(): Promise<UpdateState>;
   /** "Reiniciar e atualizar": só troca se a versão pronta ainda é a que o botão mostrou (`expectedVersion`). */
   /** `forcar` = o clique em "Parar e atualizar": sem ele, uma resposta em andamento não é interrompida. */
   applyUpdate(expectedVersion: string, forcar?: boolean): Promise<void>;

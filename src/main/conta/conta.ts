@@ -189,6 +189,22 @@ export async function atualizarConta(): Promise<ContaView> {
   return avisar();
 }
 /**
+ * Papel da conta confirmado pelo servidor AGORA (GET /conta com resposta 200): o que libera uma ação só de super
+ * admin. O papel guardado no conta.bin não basta: pode estar velho (rebaixado no console) e não tem assinatura.
+ * Sem sessão, sem rede ou com a API fora: null, e a ação não acontece.
+ */
+export async function papelConfirmado(): Promise<{ email: string; admin: "super" | "admin" | null } | null> {
+  const tok = await tokenDeAcesso();
+  const s = lerSessao();
+  if (tok === null || s === null) return null;
+  const resp = await api("GET", "/conta", null, tok);
+  if (resp.status !== 200) return null;
+  const c = parseContaInfo(resp.corpo);
+  if (c === null) return null;
+  gravarSessao({ ...s, conta: c, fotoLocal: c.foto === s.conta.foto ? s.fotoLocal : null }); avisar();
+  return { email: c.email, admin: c.admin };
+}
+/**
  * Perfil / Plano / Devices do menu: abre o console no navegador já entrado. Com sessão, pede à API um código de uso
  * único (60 s) preso a um PKCE novo e abre `<console><caminho>#code&verifier`; o console troca no POST /token. Sem
  * sessão (ou API fora), abre o caminho puro e o console pede o login.
