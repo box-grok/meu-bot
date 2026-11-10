@@ -50,3 +50,18 @@ test("hermesNaVersao", () => {
   assert.equal(c.hermesNaVersao("Hermes Agent v0.21.0"), false);
   assert.equal(c.hermesNaVersao(""), false);
 });
+
+test("ehNossoProxyOrfao: só o proxy do Hermes do meu-bot na porta deste app", () => {
+  const pre = "/Users/box/.local/share/meu-bot/hermes";
+  const py = `${pre}/lib/node_modules/hermes-agent/runtime/hermes-agent/venv/bin/python3 ${pre}/lib/node_modules/hermes-agent/runtime/hermes-agent/venv/bin/hermes proxy start --provider xai --host 127.0.0.1 --port 8691`;
+  assert.equal(c.ehNossoProxyOrfao(py, pre, 8691), true);
+  assert.equal(c.ehNossoProxyOrfao(py + "\n", pre + "/", 8691), true);
+  // Outro app (outra porta), outro Hermes (o da pessoa), outro subcomando, porta parecida: intocados.
+  assert.equal(c.ehNossoProxyOrfao(py, pre, 8690), false);
+  assert.equal(c.ehNossoProxyOrfao(py.replace(/--port 8691/, "--port 86910"), pre, 8691), false);
+  assert.equal(c.ehNossoProxyOrfao("/opt/homebrew/bin/hermes proxy start --provider xai --port 8691", pre, 8691), false);
+  assert.equal(c.ehNossoProxyOrfao(`${pre}/bin/hermes auth add xai-oauth --port 8691`, pre, 8691), false);
+  assert.equal(c.ehNossoProxyOrfao(`${pre}-velho/bin/hermes proxy start --port 8691`, pre, 8691), false);
+  assert.equal(c.ehNossoProxyOrfao("", pre, 8691), false);
+  assert.equal(c.ehNossoProxyOrfao(py, "", 8691), false);
+});

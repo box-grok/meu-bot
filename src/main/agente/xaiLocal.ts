@@ -4,7 +4,7 @@
  * num `hermes` que a pessoa já tenha), o proxy da xAI é um processo filho do app, ao lado do backend local, e o
  * providers.json do backend local aponta o grok-4 para ele. A credencial fica em ~/.hermes, como em qualquer Hermes.
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -12,7 +12,8 @@ import path from "node:path";
 import { app, shell } from "electron";
 import type { ClaudeAuthInfo, ClaudeLoginEvent, InstallBackendResult } from "../../shared/ipc";
 import { ensureLocalBackend, findNode, localBackendAlive, localBackendDir, localBackendPort, stopLocalBackend } from "../maquina/localBackend";
-import { HERMES_VERSION_LOCAL, hermesNaVersao, providersApontaProxy, providersComGrokLocal, proxyPortaLocal, rotuloCredencialXai, statusXaiLogado } from "./xaiLocal-core";
+import { pidsDoLsof } from "../maquina/backend-local-orfao-core";
+import { HERMES_VERSION_LOCAL, ehNossoProxyOrfao, hermesNaVersao, providersApontaProxy, providersComGrokLocal, proxyPortaLocal, rotuloCredencialXai, statusXaiLogado } from "./xaiLocal-core";
 
 const HOME = os.homedir();
 const PREFIX = path.join(HOME, ".local", "share", "meu-bot", "hermes");
@@ -70,10 +71,37 @@ let proxy: ChildProcess | null = null;
 let proxyQuer = false;
 let proxyRetry: NodeJS.Timeout | null = null;
 
+/** PIDs ouvindo na porta deste app que são o nosso proxy (de uma abertura anterior). */
+function proxiesNaPorta(p: number): number[] {
+  const l = spawnSync("lsof", ["-nP", `-iTCP:${p}`, "-sTCP:LISTEN", "-t"], { encoding: "utf8", timeout: 5000 });
+  return pidsDoLsof(l.stdout ?? "", process.pid).filter((pid) => {
+    const ps = spawnSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 5000 });
+    return ehNossoProxyOrfao(ps.stdout ?? "", PREFIX, p);
+  });
+}
+
+/** Encerra o proxy órfão que segura a porta (SIGTERM, até 5 s, depois SIGKILL). */
+async function liberarProxyOrfao(p: number): Promise<void> {
+  const nossos = proxiesNaPorta(p);
+  if (nossos.length === 0) return;
+  for (const pid of nossos) { try { process.kill(pid, "SIGTERM"); } catch { /* já saiu */ } }
+  log(`proxy órfão de uma abertura anterior (pid ${nossos.join(", ")}) segurava a porta ${p}: encerrado`);
+  for (let i = 0; i < 25 && proxiesNaPorta(p).length > 0; i++) await new Promise((r) => setTimeout(r, 200));
+  for (const pid of proxiesNaPorta(p)) { try { process.kill(pid, "SIGKILL"); } catch { /* já saiu */ } }
+}
+
+let subindo = false;
 function subirProxy(): void {
+  if (!proxyQuer || proxy !== null || subindo) return;
+  subindo = true;
+  void liberarProxyOrfao(porta()).catch(() => undefined).finally(() => { subindo = false; iniciarProxy(); });
+}
+
+function iniciarProxy(): void {
   if (!proxyQuer || proxy !== null) return;
   const fd = fs.openSync(path.join(app.getPath("userData"), "xai-proxy.log"), "a");
-  const child = spawn(HERMES, ["proxy", "start", "--provider", "xai", "--host", "127.0.0.1", "--port", String(porta())], { stdio: ["ignore", fd, fd], env: envHermes() });
+  // Grupo de processos próprio (detached): o stop encerra o wrapper node E o python que ele sobe.
+  const child = spawn(HERMES, ["proxy", "start", "--provider", "xai", "--host", "127.0.0.1", "--port", String(porta())], { stdio: ["ignore", fd, fd], env: envHermes(), detached: true });
   fs.closeSync(fd);
   proxy = child;
   const ini = Date.now();
@@ -98,7 +126,9 @@ export function stopLocalXaiProxy(): void {
   proxyQuer = false;
   if (proxyRetry !== null) { clearTimeout(proxyRetry); proxyRetry = null; }
   const p = proxy; proxy = null;
-  if (p !== null) { try { p.kill("SIGTERM"); } catch { /* já morto */ } }
+  if (p === null) return;
+  // O grupo inteiro (wrapper + python); se o grupo já não existe, ao menos o filho direto.
+  try { if (p.pid !== undefined) process.kill(-p.pid, "SIGTERM"); else p.kill("SIGTERM"); } catch { try { p.kill("SIGTERM"); } catch { /* já morto */ } }
 }
 
 /** Reinicia o proxy na hora (depois do login, para não esperar os 15 s do retry). */
