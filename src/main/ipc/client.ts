@@ -24,6 +24,7 @@ import { cancelPairing, esquecerWhatsapp, pairingInProgress, runSsh, setDmPolicy
 import { pauseRuleSh } from "../whatsapp/whatsapp-pause";
 import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../agente/claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../agente/xaiLogin";
+import { prepareGrokOauthLocal } from "../agente/xaiLocal";
 import { cancelarConta, entrarConta, instalarGh, sairConta } from "../agente/contas-cli";
 import { isContaId } from "../agente/contas-cli-core";
 import { linkPublicoLista, linkPublicoNome, linkPublicoPublicar, linkPublicoRemover } from "../agente/link-publico";
@@ -190,11 +191,13 @@ export function registerClientIpc(): void {
     return resetSupport(h.host);
   });
 
-  // Grok por OAuth em máquina sem Hermes: instala Hermes + proxy (install-grok-oauth.sh); cada linha vai ao log do login.
+  // Grok por OAuth: instala Hermes + proxy (install-grok-oauth.sh por SSH; no Mac, xaiLocal.ts); cada linha vai ao log do login.
   handleClient("xai-login:prepare", (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
-    return prepareGrokOauth(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("xai-login:event", { kind: "log", text: line }); });
+    const onLine = (line: string): void => { if (!h.win.isDestroyed()) h.win.webContents.send("xai-login:event", { kind: "log", text: line }); };
+    if (h.host === LOCAL_HOST) return prepareGrokOauthLocal(onLine);
+    return prepareGrokOauth(h.host, onLine);
   });
   // Status line do Claude (tutorial): checar e instalar na máquina desta janela.
   handleClient("statusline:status", (event) => {
