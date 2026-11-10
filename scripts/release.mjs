@@ -22,7 +22,8 @@ import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "n
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { CHAVE_RELEASE_ANTIGA, lerChaveArquivo, lerChavePrincipal } from "./chave-release.mjs";
-import { clientesGoogleParaPublicar, componentesSemVersao, faltasParaPublicar, lerVersao, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
+import { componentesPendentes } from "./release-checar.mjs";
+import { clientesGoogleParaPublicar, faltasParaPublicar, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
 
 const staging = process.argv.includes("--staging");
 // `--conferir`: roda todas as recusas e conferências e sai antes de empacotar, sem tag nem release (skill aprovar-estavel).
@@ -66,17 +67,11 @@ step("compilando para ler a tabela de produtos");
 execSync("npm run build:main", { stdio: "inherit" });
 
 step("conferindo as versões dos componentes da máquina");
-let ultima = null;
-try { ultima = execSync('git describe --tags --abbrev=0 --match "v*"', { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null; } catch { /* primeira release: nada a comparar */ }
-if (ultima === null) console.log("  primeira release: sem tag anterior para comparar");
-else {
-  const { COMPONENTES } = createRequire(import.meta.url)("../dist/main/maquina/backend-bundle-core.js");
-  const mudancas = execSync(`git diff --name-only ${ultima}..HEAD`, { encoding: "utf8" }).split("\n");
-  const naTag = (f) => { try { return execFileSync("git", ["show", `${ultima}:${f}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { return null; } };
-  const versoes = Object.fromEntries(COMPONENTES.map((c) => [c.nome, { antes: lerVersao(c.versao, naTag(c.versao)), agora: lerVersao(c.versao, existsSync(c.versao) ? readFileSync(c.versao, "utf8") : null) }]));
-  const falta = componentesSemVersao(COMPONENTES, mudancas, versoes);
-  if (falta.length > 0) { console.error(`✗ desde ${ultima}:\n  ${falta.join("\n  ")}`); process.exit(64); }
-  console.log(`  ok desde ${ultima}`);
+{
+  const { ultima, falta } = componentesPendentes();
+  if (ultima === null) console.log("  primeira release: sem tag anterior para comparar");
+  else if (falta.length > 0) { console.error(`✗ desde ${ultima}:\n  ${falta.join("\n  ")}`); process.exit(64); }
+  else console.log(`  ok desde ${ultima}`);
 }
 const { PRODUTOS } = await import("./produtos.mjs");
 if (conferir) {

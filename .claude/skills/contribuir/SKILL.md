@@ -33,6 +33,10 @@ nesta sessão** (branch de outra sessão: só avise o usuário).
    `build/extensao-autenticador`; cópia de `build/suporte` (o `suporte.json` do admin, fora do git; sem ele o
    meu-bot-admin sai "sem caixa de entrada configurada"); cópia de `config/google-oauth.json` e `config/google-conta-oauth.json` (fora do git; sem
    eles o cliente sai sem Google e o `package.mjs` avisa). Rode `npm test` e `npm run dist…` de dentro do worktree.
+   **Para a release automática não travar**, no mesmo PR: mudou componente da máquina (backend, financeiro, CRM,
+   guarda; lista em `COMPONENTES`, `src/main/maquina/backend-bundle-core.ts`) → suba a versão dele (o CI roda
+   `scripts/release-checar.mjs` e recusa sem); mudança que a pessoa vê → um item em "Ainda não lançado" do
+   `docs/CHANGELOG.md`, em linguagem de quem usa (vira as notas da release).
 3. **Commit**: só os arquivos da mudança (`git add <arquivos>`, nada de `git add -A`, que pegaria `.env`, `out/` e afins).
    Mensagem no estilo do `git log`: `Área: o que muda` na primeira linha, em pt-BR, e um parágrafo com o porquê. Termine
    com a linha de coautoria que a conversa indicar.

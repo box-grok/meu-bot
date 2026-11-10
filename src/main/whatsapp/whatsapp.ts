@@ -15,7 +15,6 @@ import { SEND_POLICY_READ_SH, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "../conversa/conversation";
 import { log } from "../maquina/backend";
 import { hermesAudioStatus } from "./hermes-audio";
-import { LOCAL_HOST } from "../maquina/localBackend";
 import { isValidHost } from "../app/settings";
 import { runSsh } from "./whatsapp-ssh";
 import { kvOf, kvTrimOf } from "./whatsapp-kv";
@@ -82,7 +81,7 @@ async function completarPorAlvo(host: string, kv: Map<string, string>, de: (m: M
 }
 async function lerWhatsappStatus(host: string): Promise<Omit<WhatsappStatus, "capacidades">> {
   const none: Omit<WhatsappStatus, "capacidades"> = { present: false, gateway: null, agent: "", ready: false, missing: null, connected: false, state: "ausente", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null };
-  if (host === LOCAL_HOST || !isValidHost(host)) return none;
+  if (!isValidHost(host)) return none;
   // Normalmente segundos; com o conserto do gateway (gw_fix: install --force + espera) passa de um minuto.
   const r = await runSsh(host, STATUS_SCRIPT, 240_000);
   if (r.code !== 0) return { ...none, detail: `não consegui consultar: ${ultimaLinha(r.stderr) || "ssh falhou"}` };
@@ -110,7 +109,7 @@ async function lerWhatsappStatus(host: string): Promise<Omit<WhatsappStatus, "ca
  * para voltar ao padrão (gateway próprio). Só muda o arquivo: registrar a conta no gateway é o passo do admin.
  */
 export async function whatsappDefinirAlvo(host: string, alvo: WhatsappAlvo | null): Promise<WhatsappStatus> {
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   if (alvo !== null) { const erro = alvoValido(alvo); if (erro !== null) throw new Error(erro); }
   const b64 = alvo === null ? "" : Buffer.from(JSON.stringify(alvo), "utf8").toString("base64");
   const script = alvo === null
@@ -130,7 +129,7 @@ export async function whatsappDefinirAlvo(host: string, alvo: WhatsappAlvo | nul
  * antes (os dois no mesmo número responderiam em dobro); o QR é lido de novo no agente novo.
  */
 export async function whatsappEscolherAgente(host: string, agente: WhatsappAgente): Promise<WhatsappStatus> {
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   const antes = await whatsappStatus(host);
   if (antes.present && antes.gateway !== agente && (antes.gateway === "hermes" || antes.gateway === "openclaw") && antes.number !== null) await whatsappLogout(host, antes.gateway);
   const r = await runSsh(host, `mkdir -p "$(dirname "${WA_AGENTE_FILE}")" && printf '%s\n' ${agente} > "${WA_AGENTE_FILE}" && echo OK=1\n`, 20_000);
@@ -149,7 +148,7 @@ async function motorQueResponde(host: string, oque: string): Promise<MotorWhatsa
 
 /** Quem o agente responde nas DMs (whatsapp-motor.ts › setDmPolicy de cada motor). Devolve o estado novo. */
 export async function setDmPolicy(host: string, policy: WhatsappReplyChoice, numbers: readonly string[] = []): Promise<WhatsappStatus> {
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   const motor = await motorQueResponde(host, "escolher quem responde");
   await motor.setDmPolicy(host, policy, numbers, {});
   esquecerWhatsapp(host);
@@ -158,7 +157,7 @@ export async function setDmPolicy(host: string, policy: WhatsappReplyChoice, num
 
 /** "Digitando…" do agente no WhatsApp: mostrar sempre ou nunca (whatsapp-motor.ts › setTypingMode). Devolve o estado novo. */
 export async function setTypingMode(host: string, mode: TypingChoice): Promise<WhatsappStatus> {
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   const motor = await motorQueResponde(host, "ligar ou desligar o \"digitando…\"");
   await motor.setTypingMode(host, mode);
   esquecerWhatsapp(host);
@@ -175,7 +174,7 @@ export async function setTypingMode(host: string, mode: TypingChoice): Promise<W
  */
 export async function whatsappSetDono(host: string, numero: string | null): Promise<WhatsappStatus> {
   esquecerWhatsapp(host);
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   if (numero !== null && !/^\d{8,15}$/.test(numero)) throw new Error("número inválido (só dígitos, com DDI, 8 a 15)");
   const motor = await motorQueResponde(host, "definir o dono");
   const antes = await motor.readQuem(host);
@@ -200,7 +199,7 @@ export function whatsappChats(host: string, opts: { force?: boolean } = {}): Pro
   return chatsCache.get(host, CHATS_VALIDADE_MS, () => lerChats(host), opts.force === true);
 }
 async function lerChats(host: string): Promise<WhatsappChat[]> {
-  if (host === LOCAL_HOST || !isValidHost(host)) return [];
+  if (!isValidHost(host)) return [];
   // Arquivado/excluído/nomes moram na máquina (whatsapp-lista.json), na mesma leitura: os dois apps veem a mesma lista.
   // A lista de pausados do openclaw.json (sendPolicy) vem junto; o Hermes a ignora.
   const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
@@ -226,7 +225,7 @@ ${SEND_POLICY_READ_SH}
  * apps. Devolve só os achados. Quem não escreveu ainda fica sem nome (a tela não insiste nesta abertura).
  */
 export async function whatsappLearnNames(host: string, numbers: readonly string[]): Promise<Record<string, string>> {
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   const want = [...new Set(numbers.map((n) => n.replace(/\D/g, "")))].filter((n) => /^\d{8,15}$/.test(n)).slice(0, 20);
   if (want.length === 0) return {};
   const chats = await whatsappChats(host);
@@ -244,14 +243,14 @@ export async function whatsappLearnNames(host: string, numbers: readonly string[
 /** Grava na máquina os ajustes de arquivado/excluído, de conversas e de grupos (merge lá, para o admin e a pessoa não se sobrescreverem). */
 export async function whatsappSetMarks(host: string, patches: readonly (WaMarkPatch | WaGroupMarkPatch | WaDonoPatch)[]): Promise<void> {
   esquecerWhatsapp(host);
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   const r = await runSsh(host, waMarkSh(patches), 20_000);
   if (r.code !== 0 || !r.stdout.includes("MARKS=1")) throw new Error(`não deu para gravar na máquina: ${ultimaLinha(r.stderr) || "ssh falhou"}`);
   log(`whatsapp: marcações gravadas em ${host}: ${patches.map((p) => ("dono" in p ? `dono=${p.dono === "" ? "(pareado)" : `+${p.dono}`}` : "jid" in p ? `grupo ${p.jid}${p.deleted !== undefined ? ` d=${p.deleted}` : ""}${p.alias !== undefined ? ` apelido=${p.alias === "" ? "(apagado)" : "sim"}` : ""}` : `${p.number}${p.archived !== undefined ? ` a=${p.archived}` : ""}${p.deleted !== undefined ? ` d=${p.deleted}` : ""}`)).join(", ")}`);
 }
 
 export async function whatsappThread(host: string, number: string, limit = 200): Promise<WhatsappThreadMessage[]> {
-  if (host === LOCAL_HOST || !isValidHost(host)) return [];
+  if (!isValidHost(host)) return [];
   const want = number.replace(/\D/g, "");
   if (want.length < 8) throw new Error("número inválido");
   const chat = (await whatsappChats(host)).find((c) => c.number === want);
@@ -305,7 +304,7 @@ export async function whatsappGroupExportBody(host: string, jid: string, limit =
 
 /** O que "Limpar histórico" de um grupo vai zerar: a sessão do agente nele (grupo não tem sessão principal). No Hermes, uma por remetente. */
 export async function whatsappGroupClearPlan(host: string, jid: string): Promise<{ sessoes: number }> {
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   return (await motorDe(host)).groupClearPlan(host, jid, () => whatsappGroups(host));
 }
 
@@ -317,7 +316,7 @@ export async function whatsappGroupClear(host: string, jid: string): Promise<voi
 
 /** O que "Limpar histórico" vai zerar: sessões só do contato e, se houver, a principal (de todos); e se ele está pausado. */
 export async function whatsappClearPlan(host: string, number: string): Promise<{ own: string[]; shared: string[]; paused: boolean }> {
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   const want = number.replace(/\D/g, "");
   const chat = (await whatsappChats(host)).find((c) => c.number === want);
   // Hermes: a sessão é sempre só do contato; o que se limpa é o id da sessão viva (não há "principal" compartilhada).
@@ -330,7 +329,7 @@ export async function whatsappClearPlan(host: string, number: string): Promise<{
 /** Zera sessões: ids do Hermes (sem ":") pelo próprio Hermes; chaves do OpenClaw pelo gateway. As chaves dizem o motor. */
 export async function whatsappClearSessions(host: string, keys: readonly string[]): Promise<void> {
   esquecerWhatsapp(host);
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   const safe = keys.filter((k) => SAFE_KEY.test(k));
   if (safe.length === 0) throw new Error("não há histórico desta conversa na máquina");
   const motor = safe.every((k) => HERMES_ID_RE.test(k) && !k.includes(":")) ? MOTORES.hermes : MOTORES.openclaw;
@@ -364,7 +363,7 @@ export async function whatsappKeepPaused(host: string, number: string, own: read
  */
 export async function whatsappLogout(host: string, qual?: WhatsappAgente): Promise<void> {
   esquecerWhatsapp(host);
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   if (pairingInProgress() !== null) throw new Error("há um pareamento em andamento; feche o QR antes de desconectar");
   // `qual`: desconecta esse agente mesmo que a escolha gravada já seja outra (trocar de agente).
   // Alvo do OpenClaw fora do padrão (conta nomeada ou gateway de outro usuário): o logout da conta, no alias do gateway.
@@ -390,7 +389,7 @@ export function whatsappGroups(host: string, opts: { force?: boolean } = {}): Pr
 }
 /** Grupos da máquina: sessões de grupo, a config de grupos e o cache da skill, numa leitura só. */
 async function lerGroups(host: string): Promise<WhatsappGroups> {
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
 ${WA_MOTOR_SH}
 ${WA_ALVO_SH}
@@ -409,7 +408,7 @@ echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\n')"
 /** Conversa de um grupo (só leitura), com o autor de cada mensagem. */
 export async function whatsappGroupThread(host: string, jid: string, limit = 200): Promise<WhatsappThreadMessage[]> {
   if (!/^\d{6,30}@g\.us$/.test(jid)) throw new Error("grupo inválido");
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   const n = Math.min(1000, Math.max(1, Math.trunc(limit)));
   return (await motorDe(host)).groupThread(host, jid, n, () => whatsappGroups(host));
 }
@@ -417,7 +416,7 @@ export async function whatsappGroupThread(host: string, jid: string, limit = 200
 /** Liga/desliga o agente num grupo e/ou muda quem o aciona. Devolve os grupos já com a mudança. */
 export async function whatsappSetGroup(host: string, jid: string, pedido: WhatsappGroupPatch): Promise<WhatsappGroups> {
   esquecerWhatsapp(host);
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   if (!/^\d{6,30}@g\.us$/.test(jid)) throw new Error("grupo inválido");
   return (await motorDe(host)).setGroup(host, jid, pedido, () => whatsappGroups(host, { force: true }));
 }
@@ -428,7 +427,7 @@ export async function whatsappSetGroup(host: string, jid: string, pedido: Whatsa
  */
 export async function whatsappRefreshGroups(host: string): Promise<WhatsappGroups> {
   esquecerWhatsapp(host);
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  if (!isValidHost(host)) throw new Error("máquina inválida");
   await (await motorDe(host)).refreshGroups(host);
   esquecerWhatsapp(host);
   return whatsappGroups(host);

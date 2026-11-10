@@ -31,10 +31,11 @@ mkdir -p "$ESTADO" "$(dirname "$LOG")" "$RAIZ/.claude"
 # (build/ e dist/ ficam de fora: são saída do empacotamento; vigiá-los faria o ciclo disparar a si mesmo)
 VIGIAR=(src scripts/tests scripts/package.mjs scripts/dist.mjs scripts/fuses.mjs scripts/vendor.mjs scripts/icons.mjs config assets extensao-crm/src extensao-crm/package.json package.json package-lock.json)
 # variante | app em ~/Applications | script npm
+# Os staging (meu-bot-staging, meu-bot-finance-staging) não entram: vêm da release staging que a release automática
+# (scripts/release-auto.mjs) solta a cada merge, e se atualizam pelo atualizador de verdade. Um build local saía com a
+# versão sem sufixo (0.80.0), mais nova que qualquer 0.80.0-staging.N, e nunca recebia a atualização.
 TABELA="admin|meu-bot-admin-gestao|dist:admin
-meu-bot|meu-bot|dist
-staging|meu-bot-staging|dist:staging
-finance-staging|meu-bot-finance-staging|dist:finance-staging"
+meu-bot|meu-bot|dist"
 # Checkout principal (o dono do .git; worktrees apontam para ele) e, ao lado dele, o worktree fixo de build.
 PRINCIPAL="$(cd "$(git rev-parse --git-common-dir 2>/dev/null || echo .git)/.." && pwd)"
 BUILD="${MEU_BOT_BUILD_DIR:-$(dirname "$PRINCIPAL")/meu-bot-build-main}"

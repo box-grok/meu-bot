@@ -18,7 +18,7 @@ import { adminPickerSource } from "./admin/picker-source";
 import { migrateAdminPessoas } from "./admin/user-data";
 import { herdarDe, useVariantUserData, fundirDe, relatorioFusao } from "./app/user-data";
 import { registerIpc } from "./ipc/index";
-import { applyStagedOnQuit, applyUpdate as applyUpdateNow, atualizarAgora as atualizarAgoraNow, checkIfStale as checkUpdateIfStale, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork, noteVersaoMinima, onUpdateState, updateMenuState } from "./atualizacao/updater";
+import { applyStagedOnQuit, onAntesDeRelancar, applyUpdate as applyUpdateNow, atualizarAgora as atualizarAgoraNow, checkIfStale as checkUpdateIfStale, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork, noteVersaoMinima, onUpdateState, updateMenuState } from "./atualizacao/updater";
 import { checkNow as checkNetNow, disposeNet, initNet, onBackOnline } from "./app/net";
 import { installBrowserHooks } from "./navegador/browser";
 import { startTermApi } from "./terminal/term-api";
@@ -118,6 +118,9 @@ app.whenReady().then(() => {
   if (caps().usuariosMac) registerUsuariosMacIpc();
   initRelief();
   initUpdater();
+  // A troca sai por app.exit (sem will-quit): o backend local e o proxy da xAI deste Mac fecham antes, senão ficam
+  // órfãos segurando a porta e o app reaberto não sobe os dele.
+  onAntesDeRelancar(() => { closeTunnel(); });
   // O backend de cada máquina diz no hello a versão mínima do app que atende: abaixo dela, a janela bloqueia até atualizar.
   onVersaoMinima(noteVersaoMinima);
   // Internet deste Mac (faixa OFFLINE). Quando volta: revalida os túneis, reabre o das janelas abertas que

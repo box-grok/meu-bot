@@ -1,48 +1,48 @@
 ---
 name: aprovar-estavel
-description: Checklist de três fases para levar o staging do meu-bot à estável com segurança — 1) o staging está no ar e o usuário testou, 2) a release estável passa em todas as recusas (npm run release -- --conferir), 3) depois de publicar, a estável chegou certa às pessoas e às máquinas. Use quando o usuário perguntar "dá para subir a estável?", "como está o staging?", "posso aprovar?", "subiu certo?", "aprovado" (antes de chamar a skill publicar), ou depois de publicar uma estável.
+description: Painel das três fases do staging à estável do meu-bot — 1) o staging está no ar e saudável, 2) a estável passa em todas as recusas (npm run release -- --conferir), 3) depois de publicada, chegou certa às pessoas e às máquinas. Use quando o usuário perguntar "como está o staging?", "quando sai a estável?", "dá para subir a estável?", "posso aprovar?", "subiu certo?", ou disser "aprovado" querendo a estável antes das 24 h do agente automático.
 ---
 
 # Aprovar a estável (as três fases)
 
-A skill `publicar` é a que publica (staging e estável). Esta é o portão: diz se o staging está pronto para virar
-estável e, depois, se a estável chegou certa. Responda sempre em pt-BR, com o que você conferiu e o que depende do
-usuário. A estável só sai com o **"aprovado"** explícito dele (é pública e definitiva); nada aqui substitui isso.
+**Quem publica:** normalmente o agente `scripts/release-auto.mjs` (launchd, a cada 10 min; skill `publicar`, "Caminho
+normal"): staging 10 min depois do último merge, estável 24 h depois se o staging deste Mac confirmou a versão. Esta
+skill é o painel: diz em que fase está, o que já foi conferido e o que falta; e, com o **"aprovado"** do usuário,
+antecipa a estável pelo caminho manual. Responda em pt-BR, com uma tabela por fase e, no fim, **o que depende do
+usuário agora** numa linha.
 
-Antes de tudo: `git fetch origin --tags` e descubra a staging mais nova (`gh release list -R diegofornalha/meu-bot --limit 5`).
-Chame `<v>` a versão base (`package.json` do `origin/main`, ex.: `0.80.0`) e `<tag>` a staging candidata (`v<v>-staging.N`).
+Comece sempre por: `git fetch origin --tags` e, num worktree no `origin/main` com `node_modules`:
+`node scripts/release-auto.mjs --check` (decisão da vez: aguardar, staging, promover, subir-base; e se o agente está
+instalado) e `tail -20 ~/Library/Logs/meu-bot-release.log` (o que ele fez por último). `<v>` = a staging candidata
+(`v<base>-staging.N`, a mais nova em `gh release list -R diegofornalha/meu-bot --limit 5`).
 
-## Fase 1: o staging está no ar e foi testado
+## Fase 1: o staging está no ar e saudável
 
-Você confere sozinho:
+- **Release completa:** `gh release view <tag> -R diegofornalha/meu-bot --json isDraft,assets` → não é draft;
+  `.zip` + `.zip.sig` de meu-bot-staging e meu-bot-finance-staging, e o `.dmg` do meu-bot-staging.
+- **Site de staging:** `curl -s https://site-staging.agentesgrok.com/download/mac.json` → `versao` da `<tag>`, `nome`
+  `.dmg` (até 10 min de cache).
+- **Saúde neste Mac:** `node scripts/release-saude.mjs <versão>` → `✓ … confirmada neste Mac`. É a mesma prova que o
+  agente usa para promover: o meu-bot-staging **instalado da release** (o de `/Applications`; o de `~/Applications`
+  feito pelo rebuild é build local e não serve) recebeu a versão e ficou de pé. `✗ ainda não confirmou`: abra o
+  `/Applications/meu-bot-staging.app` (o agente também o abre escondido) e espere; `voltou para a anterior`: pare e
+  investigue o log `[atualização]` de `~/Library/Application Support/meu-bot-staging/meu-bot.log`.
+- **Máquinas:** para cada `Host suporte-*` de `~/.ssh/meu-bot-suporte.conf` (menos o este Mac, que não tem backend de
+  VM), `ssh -o BatchMode=yes <alias> 'cat ~/.local/share/meu-bot/backend/VERSION'` igual a
+  `git show <tag>:backend-colima/VERSION`.
+- **Escopo:** `git log --oneline --first-parent v<estável anterior>..<tag>` (o que a estável leva) e
+  `git log --oneline --first-parent <tag>..origin/main` (o que ficou de fora: o agente solta um staging novo e
+  recomeça as 24 h).
 
-- **Release completa:** `gh release view <tag> -R diegofornalha/meu-bot --json isDraft,assets` → não é draft; para cada
-  app do canal (meu-bot-staging, meu-bot-finance-staging) há o `.zip` **e** o `.zip.sig`, e o `.dmg` do
-  meu-bot-staging (o instalador do site).
-- **Site de staging:** `curl -s https://site-staging.agentesgrok.com/download/mac.json` → `versao` = a da `<tag>` e
-  `nome` terminando em `.dmg` (até 10 min de cache depois de publicar).
-- **O staging do usuário trocou mesmo:** no `~/Library/Application Support/meu-bot-staging/meu-bot.log`,
-  `grep "atualizacao \(preparar\|trocar\)"` mostra `preparar ok: <versão> pronta` e `trocar ok: trocado para a <versão>`;
-  e `grep "\[atualização\].*recus\|não confere"` vazio (assinatura recusada aparece aí).
-- **Máquinas no backend certo:** para cada alias `suporte-*` do `~/.ssh/meu-bot-suporte.conf`,
-  `ssh -o BatchMode=yes <alias> 'cat ~/.local/share/meu-bot/backend/VERSION'` igual ao `backend-colima/VERSION` da
-  `<tag>` (`git show <tag>:backend-colima/VERSION`). Abaixo = a máquina ainda não atualizou (o seletor atualiza
-  quando ociosa; log `[backend]` do app).
-- **O que mudou desde a última estável:** `git log --oneline --first-parent v<estável anterior>..<tag>` e a seção
-  "Ainda não lançado" do `docs/CHANGELOG.md` na `<tag>`. Aponte o que é novo e ninguém testou ainda.
-- **O `main` andou depois da `<tag>`?** `git log --oneline --first-parent <tag>..origin/main`. Se sim, diga quais PRs
-  ficariam de fora da estável (a promoção sai no commit da tag).
-
-Depende do usuário: testar pelo roteiro de dez minutos de [`docs/ROTEIRO-upgrade.md`](../../../docs/ROTEIRO-upgrade.md)
-(instalar por cima, versão preparada, recusa do que não confere, troca, preferências e abas, volta atrás) e dizer o que
-viu. Sem esse retorno, diga "o staging está no ar, falta o seu teste".
+Depende do usuário (opcional): o roteiro de dez minutos de [`docs/ROTEIRO-upgrade.md`](../../../docs/ROTEIRO-upgrade.md)
+para o que a prova automática não encena (instalar por cima, preferências e abas, volta atrás matando no meio).
 
 ## Fase 2: a estável passa em todas as recusas
 
-Num worktree **no commit da `<tag>`** (nunca o checkout principal):
-`git worktree add --detach ../meu-bot-release <tag>` (ou `git -C ../meu-bot-release checkout -q --detach <tag>`), com
-`node_modules` (symlink do checkout principal), o `build/` inteiro (inclui `build/suporte`) e `config/google-*.json`
-copiados, como na skill `contribuir`. Lá:
+Antes de qualquer promoção manual (e para responder "dá para subir?"), num worktree **no commit da `<tag>`**:
+`git worktree add --detach ../meu-bot-promover <tag>` com `node_modules` (symlink do checkout principal), o `build/`
+inteiro (inclui `build/suporte`) e `config/google-*.json` copiados (skill `contribuir`). Nunca use o
+`../meu-bot-release` (é do agente). Lá:
 
 ```
 npm test
@@ -50,35 +50,24 @@ npm run release -- --conferir
 ```
 
 O `--conferir` roda tudo o que o `npm run release` recusaria e sai antes de empacotar, sem tag nem release: árvore
-limpa, `gh` logado, a tag `v<v>` ainda livre, **o commit tem a tag `-staging.N`** (só sobe para estável o que passou
-pelo staging), a chave da release no Chaveiro (o macOS pode pedir aprovação), as versões dos componentes da máquina
-(backend, financeiro, CRM, guarda) e `build/suporte` para o admin. Sai com `✓ conferido: v<v> pode sair do commit … com
-meu-bot, meu-bot-admin-gestao, meu-bot-admin-mac (N itens nas notas). Nada foi publicado.` Qualquer `✗` para a fase:
-mostre a linha ao usuário e o que fazer.
+limpa, `gh` logado, `v<base>` livre, **o commit tem a tag `-staging.N`**, a chave no Chaveiro (o macOS pode pedir
+aprovação), as versões dos componentes da máquina e `build/suporte` para o admin. Termina em `✓ conferido: v<base>
+pode sair do commit …. Nada foi publicado.` Um `✗` para tudo: mostre a linha e o que fazer.
 
-Com fase 1 e fase 2 verdes, diga ao usuário que dá para aprovar e espere o **"aprovado"**. Aí siga a skill `publicar`
-(passos 6 a 8) no mesmo worktree.
+**Antecipar a estável** (antes das 24 h): só com o **"aprovado"** explícito do usuário, fase 1 com saúde ✓ e fase 2
+✓. Aí `npm run release` no mesmo worktree, o deploy do site se `conta-api/` mudou (skill `publicar-site`) e a PR da
+base (skill `publicar`, passo 7). O agente vê a `v<base>` publicada e passa a cuidar só da subida da base.
 
 ## Fase 3: a estável chegou certa
 
-Logo depois do `npm run release` (skill `publicar`), você confere sozinho:
+- **Release:** `gh release view v<base> -R diegofornalha/meu-bot --json isPrerelease,assets` → não é pre-release;
+  `.zip` + `.zip.sig` do meu-bot e dos admins, `.dmg` do meu-bot.
+- **Site de produção:** `curl -s https://agentesgrok.com/download/mac.json` → `versao` `<base>`, `nome`
+  `meu-bot-<base>-arm64.dmg` (até 10 min).
+- **Um app de verdade atualiza:** um meu-bot estável instalado de release (não build local): Configurações › Sobre e
+  atualização › **Atualizar agora**; no log dele, `[atualização] <base> confirmada` e nenhum
+  `não passou das primeiras aberturas` (a volta automática).
+- **Máquinas:** repita a conferência de `VERSION` da fase 1 depois da abertura seguinte do seletor.
+- **Base:** a PR "Versão: base sobe" existe (o agente abre e mergeia; no caminho manual, você).
 
-- **Release:** `gh release view v<v> -R diegofornalha/meu-bot --json isPrerelease,assets` → não é pre-release; `.zip` +
-  `.zip.sig` do meu-bot e dos admins, e o `.dmg` do meu-bot.
-- **Site de produção:** `curl -s https://agentesgrok.com/download/mac.json` → `versao` = `<v>`, `nome`
-  `meu-bot-<v>-arm64.dmg`; `curl -sI https://agentesgrok.com/download/mac` → `location` para o `.dmg` (até 10 min).
-- **Um app de verdade atualiza:** num meu-bot estável instalado de release neste Mac, Configurações › Sobre e
-  atualização › **Atualizar agora**; no log dele (`~/Library/Application Support/meu-bot/meu-bot.log`),
-  `preparar ok` e `trocar ok` para `<v>`. App empacotado aqui (build local) não serve: ele não troca.
-- **Volta atrás automática:** no mesmo log, depois de abrir na `<v>`, nada de rollback (três aberturas sem ficar 30 s
-  de pé fazem o app voltar sozinho para a anterior). Se aparecer, avise na hora.
-- **Máquinas:** na abertura seguinte do seletor, as máquinas sobem o backend e os plugins (log `[backend]`,
-  `[finance]`, `[crm]` dos apps). Repita a conferência de `VERSION` da fase 1.
-- **Pós-estável:** a PR da versão base e do CHANGELOG (skill `publicar`, passo 7) aberta.
-
-Depende do usuário: nada, só avisar se alguém reclamar. Se a conferência falhar, diga o que falhou; o caminho de
-emergência (release nova com a correção, ou a volta automática) está em "Quando algo não chega" da skill `publicar`.
-
-## Ao responder
-
-Uma tabela curta por fase (o que foi conferido, ✓/✗) e, por último, **o que depende do usuário agora** em uma linha.
+Depende do usuário: nada, só avisar se alguém reclamar.

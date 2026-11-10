@@ -94,3 +94,85 @@ export function faltasParaPublicar({ produtos, existe, notas }) {
   if (notas === null) avisos.push('docs/CHANGELOG.md sem "Ainda não lançado" com conteúdo: a release sairia com a lista de commits do GitHub');
   return { erros, avisos };
 }
+
+// ── Release automática (scripts/release-auto.mjs): o que fazer em cada rodada do agente deste Mac ──────────────────
+
+/** Espera depois do último merge antes de soltar o staging: junta merges seguidos numa release só. */
+export const QUIETUDE_MS = 10 * 60 * 1000;
+/** Quanto o staging fica no ar antes de virar estável (se passou na prova de saúde). */
+export const SOAK_MS = 24 * 60 * 60 * 1000;
+
+/** Arquivos que, sozinhos, não justificam um staging novo (o PR "Versão: base sobe" só mexe neles). */
+const SO_VERSAO = new Set(["package.json", "package-lock.json", "docs/CHANGELOG.md"]);
+
+/** O staging mais novo da versão `base` entre `tags` (ex.: "v0.80.0-staging.2"), ou null. */
+export function stagingMaisNovo(base, tags) {
+  let melhor = null, n = 0;
+  for (const t of tags) { const m = STAGING.exec(t.trim()); if (m !== null && m[1] === base && Number(m[2]) > n) { n = Number(m[2]); melhor = t.trim(); } }
+  return melhor;
+}
+
+/**
+ * Decide a rodada, olhando só para o `origin/main`:
+ * - `subir-base`: a estável v<base> já saiu (em qualquer commit) → o PR "Versão: base sobe" ainda não entrou;
+ * - `staging`: o HEAD não tem staging desta base e o último commit tem ≥ QUIETUDE_MS;
+ * - `promover`: o staging do HEAD tem ≥ SOAK_MS e a saúde passou;
+ * - `aguardar`: qualquer outra coisa (o motivo diz o quê; `abrirStaging` pede para abrir o app staging, que só se
+ *   atualiza aberto).
+ * `mudouDesdeRelease` = arquivos do diff entre a última tag v* e o HEAD (null = não sei).
+ * Datas em ms. `saude` = { ok, motivo } de saudeStaging (só conta quando há staging no HEAD).
+ */
+export function decideRodada({ base, tagsTodas, tagsNoHead, commitEm, stagingEm, saude, agora, mudouDesdeRelease = null }) {
+  if (tagsTodas.some((t) => t.trim() === `v${base}`)) return { acao: "subir-base", motivo: `v${base} já é estável: a base do main precisa subir` };
+  const tag = stagingMaisNovo(base, tagsNoHead);
+  if (tag === null) {
+    if (mudouDesdeRelease !== null && mudouDesdeRelease.every((f) => SO_VERSAO.has(f))) return { acao: "aguardar", motivo: "nada novo desde a última release além da versão e do CHANGELOG" };
+    const falta = commitEm + QUIETUDE_MS - agora;
+    if (falta > 0) return { acao: "aguardar", motivo: `último merge há pouco: staging em ${Math.ceil(falta / 60000)} min, se nada mais entrar` };
+    return { acao: "staging", motivo: `main sem staging da ${base}` };
+  }
+  if (stagingEm === null) return { acao: "aguardar", motivo: `${tag} sem data de publicação no GitHub (release ainda subindo?)` };
+  if (saude === null || !saude.ok) return { acao: "aguardar", motivo: `${tag}: ${saude?.motivo ?? "saúde não conferida"}`, abrirStaging: true };
+  const falta = stagingEm + SOAK_MS - agora;
+  if (falta > 0) return { acao: "aguardar", motivo: `${tag} saudável; vira estável em ${Math.ceil(falta / 3600000)} h` };
+  return { acao: "promover", motivo: `${tag} no ar há 24 h, aberto e confirmado neste Mac` };
+}
+
+/**
+ * Prova de saúde do staging, lida do meu-bot-staging deste Mac: está na versão, veio da release (não de build local),
+ * o atualizador confirmou que ela ficou de pé e não voltou para a anterior. `log` = conteúdo do meu-bot.log;
+ * `pendente` = update-pendente.json lido (ou null).
+ */
+export function saudeStaging({ versao, plistVersao, origem, log, pendente }) {
+  if (plistVersao === null) return { ok: false, motivo: "meu-bot-staging não está instalado neste Mac" };
+  const esc = versao.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (new RegExp(`${esc} não passou das primeiras aberturas`).test(log ?? "")) return { ok: false, motivo: `${versao} voltou para a anterior neste Mac (não ficou de pé)`, falhou: true };
+  if (plistVersao !== versao) return { ok: false, motivo: `meu-bot-staging deste Mac ainda está na ${plistVersao}` };
+  if (origem !== "release") return { ok: false, motivo: "meu-bot-staging deste Mac é build local, não da release" };
+  if (pendente !== null && pendente?.para === versao) return { ok: false, motivo: `troca para a ${versao} ainda não confirmada (app precisa ficar 30 s de pé)` };
+  if (!new RegExp(`\\[atualização\\] ${esc} confirmada`).test(log ?? "")) return { ok: false, motivo: `o atualizador ainda não confirmou a ${versao}` };
+  return { ok: true, motivo: `${versao} confirmada neste Mac` };
+}
+
+/** Próxima base depois de uma estável: sobe o minor (0.80.0 → 0.81.0). */
+export function proximaBase(base) {
+  const [ma, mi] = base.split(".").map(Number);
+  return `${ma}.${mi + 1}.0`;
+}
+
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+/** "10 de novembro de 2026" (no fuso de São Paulo). */
+export function dataPorExtenso(d) {
+  const [a, m, dia] = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(d).split("-").map(Number);
+  return `${dia} de ${MESES[m - 1]} de ${a}`;
+}
+
+/**
+ * Depois da estável: "Ainda não lançado" vira "## <data> · v<versão>" e um "Ainda não lançado" novo, vazio, entra em
+ * cima. null = não há a seção (nada a fazer).
+ */
+export function fecharChangelog(texto, versao, data) {
+  const re = /^##[ \t]+Ainda não lançado[ \t]*$/m;
+  if (!re.test(texto)) return null;
+  return texto.replace(re, `## Ainda não lançado\n\n---\n\n## ${data} · v${versao}`);
+}

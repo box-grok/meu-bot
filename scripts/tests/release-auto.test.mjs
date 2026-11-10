@@ -1,0 +1,68 @@
+// Regras da release automática (scripts/release-auto.mjs): o que cada rodada do agente decide fazer.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { dataPorExtenso, decideRodada, fecharChangelog, proximaBase, QUIETUDE_MS, saudeStaging, SOAK_MS, stagingMaisNovo } from "../release-core.mjs";
+
+const AGORA = Date.parse("2026-11-10T15:00:00Z");
+const ok = { ok: true, motivo: "ok" };
+const base = { base: "0.80.0", tagsTodas: ["v0.79.3"], tagsNoHead: [], commitEm: AGORA - QUIETUDE_MS - 1, stagingEm: null, saude: null, agora: AGORA };
+
+test("release automática: staging só depois de 10 min sem merge novo", () => {
+  assert.equal(decideRodada(base).acao, "staging");
+  const r = decideRodada({ ...base, commitEm: AGORA - 60_000 });
+  assert.equal(r.acao, "aguardar"); assert.match(r.motivo, /staging em 9 min/);
+});
+
+test("release automática: o PR da versão sozinho não solta staging novo", () => {
+  assert.equal(decideRodada({ ...base, mudouDesdeRelease: ["package.json", "package-lock.json", "docs/CHANGELOG.md"] }).acao, "aguardar");
+  assert.equal(decideRodada({ ...base, mudouDesdeRelease: ["package.json", "src/main/main.ts"] }).acao, "staging");
+});
+
+test("release automática: promove só com 24 h no ar e a saúde ok", () => {
+  const st = { ...base, tagsTodas: ["v0.79.3", "v0.80.0-staging.1", "v0.80.0-staging.2"], tagsNoHead: ["v0.80.0-staging.2"], stagingEm: AGORA - SOAK_MS - 1, saude: ok };
+  assert.equal(decideRodada(st).acao, "promover");
+  const cedo = decideRodada({ ...st, stagingEm: AGORA - 3600_000 });
+  assert.equal(cedo.acao, "aguardar"); assert.match(cedo.motivo, /em 23 h/);
+  const doente = decideRodada({ ...st, saude: { ok: false, motivo: "ainda na 0.80.0-staging.1" } });
+  assert.equal(doente.acao, "aguardar"); assert.equal(doente.abrirStaging, true);
+  assert.equal(decideRodada({ ...st, stagingEm: null }).acao, "aguardar");
+});
+
+test("release automática: staging de um commit anterior não promove (o HEAD andou: sai staging novo)", () => {
+  const r = decideRodada({ ...base, tagsTodas: ["v0.80.0-staging.1"], tagsNoHead: [], saude: ok });
+  assert.equal(r.acao, "staging");
+});
+
+test("release automática: depois da estável, sobe a base", () => {
+  assert.equal(decideRodada({ ...base, tagsTodas: ["v0.80.0-staging.2", "v0.80.0"], tagsNoHead: ["v0.80.0-staging.2", "v0.80.0"] }).acao, "subir-base");
+  assert.equal(proximaBase("0.80.0"), "0.81.0");
+  assert.equal(proximaBase("1.9.3"), "1.10.0");
+});
+
+test("staging mais novo da base, pelo número (não pela ordem das tags)", () => {
+  assert.equal(stagingMaisNovo("0.80.0", ["v0.80.0-staging.10", "v0.80.0-staging.9", "v0.81.0-staging.1"]), "v0.80.0-staging.10");
+  assert.equal(stagingMaisNovo("0.80.0", ["v0.79.3"]), null);
+});
+
+test("saúde do staging: versão, origem, confirmação do atualizador e nenhuma volta", () => {
+  const v = "0.80.0-staging.2";
+  const bom = { versao: v, plistVersao: v, origem: "release", log: `[atualização] ${v} confirmada (ficou de pé; ocioso)`, pendente: null };
+  assert.equal(saudeStaging(bom).ok, true);
+  assert.match(saudeStaging({ ...bom, plistVersao: null }).motivo, /não está instalado/);
+  assert.match(saudeStaging({ ...bom, plistVersao: "0.80.0-staging.1" }).motivo, /ainda está na 0.80.0-staging.1/);
+  assert.match(saudeStaging({ ...bom, origem: "local" }).motivo, /build local/);
+  assert.match(saudeStaging({ ...bom, pendente: { para: v } }).motivo, /não confirmada/);
+  assert.match(saudeStaging({ ...bom, log: "" }).motivo, /ainda não confirmou/);
+  const voltou = saudeStaging({ ...bom, plistVersao: "0.80.0-staging.1", log: `${bom.log}\n[atualização] ${v} não passou das primeiras aberturas: voltando para 0.80.0-staging.1` });
+  assert.equal(voltou.ok, false); assert.equal(voltou.falhou, true);
+  // a confirmação de outra versão (staging.20 contém "staging.2") não conta
+  assert.equal(saudeStaging({ ...bom, log: "[atualização] 0.80.0-staging.20 confirmada" }).ok, false);
+});
+
+test("CHANGELOG depois da estável: a seção ganha a data e um 'Ainda não lançado' novo e vazio", () => {
+  const t = "# Changelog\n\n---\n\n## Ainda não lançado\n\n### Coisa\n- item\n\n---\n\n## 9 de novembro de 2026 · v0.79.3\n";
+  const novo = fecharChangelog(t, "0.80.0", "10 de novembro de 2026");
+  assert.equal(novo, "# Changelog\n\n---\n\n## Ainda não lançado\n\n---\n\n## 10 de novembro de 2026 · v0.80.0\n\n### Coisa\n- item\n\n---\n\n## 9 de novembro de 2026 · v0.79.3\n");
+  assert.equal(fecharChangelog("# nada", "0.80.0", "x"), null);
+  assert.equal(dataPorExtenso(new Date("2026-11-10T02:00:00Z")), "9 de novembro de 2026");
+});

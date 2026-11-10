@@ -351,7 +351,7 @@ export async function installClaudeGlobal(host: string): Promise<{ ok: boolean; 
 export async function installAudio(host: string, setup: AudioSetup, onLine?: (line: string) => void): Promise<InstallBackendResult> {
   const lines: string[] = [];
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
-  if (host === LOCAL_HOST) return { ok: false, log: ["este Mac não tem agente com WhatsApp"] };
+  if (host === LOCAL_HOST) return { ok: false, log: ["o áudio do agente do WhatsApp ainda não vale neste Mac (só nas máquinas por SSH)"] };
   const gw = await run("ssh", [...sshBase(host), "--", host, `${WA_MOTOR_SH}; usa_hermes && echo hermes || echo outro`], 30_000);
   if (/^hermes$/m.test(gw.stdout)) {
     const ligarStt = setup.kind === "in" && setup.off !== true;
