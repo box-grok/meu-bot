@@ -367,6 +367,7 @@
         <p id="update-line" class="update-line"></p>
         <div class="row">
           <button type="button" id="update-now-btn" class="btn btn-primary btn-small">Atualizar agora</button>
+          <button type="button" id="update-soltar-btn" class="btn btn-primary btn-small" hidden>Voltar a atualizar sozinho</button>
           <button type="button" id="update-check-btn" class="btn btn-ghost btn-small">Verificar agora</button>
           <button type="button" id="update-notes-btn" class="btn btn-ghost btn-small">Notas de lançamento</button>
           <button type="button" id="update-move-btn" class="btn btn-primary btn-small" hidden>Mover para Aplicativos</button>
@@ -375,6 +376,12 @@
         <!-- Como no Grok Bot: a versão pronta entra sozinha com o Mac ocioso (10 min sem mexer ou tela bloqueada) e nada em andamento. -->
         <label class="switch switch-row"><input id="atualizar-ocioso" type="checkbox" /><span class="track"></span><span class="switch-label">Atualizar sozinho quando o Mac estiver ocioso (sem resposta nem terminal em andamento)</span></label>
         <p class="hint">A versão nova é baixada e conferida em segundo plano; a troca também acontece ao fechar o app. Com uma resposta em andamento, o app pergunta antes de interromper.</p>
+        <!-- Só para conta super admin (o main confere o papel no servidor a cada chamada): instalar qualquer release do canal, mais velha inclusive. -->
+        <details id="releases-box" class="releases-box" hidden>
+          <summary>Versões publicadas <span class="sum-hint">super admin</span></summary>
+          <p id="releases-status" class="update-line"></p>
+          <ul id="releases-lista" class="releases-lista"></ul>
+        </details>
       </details>
 
       <!-- Texto e desempenho: o corretor vale para as janelas abertas daqui em diante; a aceleração, só ao reabrir o app. -->

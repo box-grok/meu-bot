@@ -48,6 +48,18 @@ export interface UpdateState {
   arch: "arm64" | "x64";
   /** Commit de onde o build saiu (Resources/build.json); "" se não se sabe. */
   commit: string;
+  /** Versão fixada por um super admin (o app não se atualiza sozinho até soltar); null = nenhuma. */
+  fixada: { versao: string; por: string } | null;
   /** Preferência "atualizar sozinho quando o Mac estiver ocioso" (Configurações › Sobre e atualização). */
   atualizarOcioso: boolean;
+}
+
+/** Uma release do canal deste app, para a lista "Versões publicadas" do super admin. */
+export interface ReleasePublicada {
+  versao: string;
+  publicadaEm: string | null;
+  relacao: "atual" | "mais-nova" | "mais-velha";
+  abaixoDaMinima: boolean;
+  /** Por que não dá para instalar (sem o arquivo desta arquitetura, sem assinatura…); null = dá. */
+  motivo: string | null;
 }

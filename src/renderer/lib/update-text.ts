@@ -2,7 +2,7 @@
  * Texto da verificação de atualização (Configurações → "Sobre e atualização", o ponto da barra de cima e o
  * bloqueador de versão mínima), como no Rambox: cada fase vira uma frase. Puro, testado. `now` só para "conferido há X".
  */
-import type { UpdateState } from "../../shared/ipc";
+import type { ReleasePublicada, UpdateState } from "../../shared/ipc";
 
 export interface UpdateText {
   text: string;
@@ -37,6 +37,11 @@ export function updateStateText(u: UpdateState, appName: string, now: number = D
     case "checking": return { text: "Verificando atualizações…", kind: "muted", showApply: false, applyLabel: APLICAR, showMove: false, short: "verificando atualizações…" };
     case "up-to-date": {
       const a = ago(u.checkedAt, now);
+      // Versão fixada por um super admin: o app não se atualiza sozinho, e a frase diz quem fixou e se há mais nova.
+      if (u.fixada !== null && u.fixada !== undefined) {
+        const nova = u.available !== null && u.available !== u.fixada.versao ? ` Há a ${u.available} publicada.` : "";
+        return { text: `Versão fixada na ${u.fixada.versao} por ${u.fixada.por}: o app não se atualiza sozinho.${nova}`, kind: "warn", showApply: false, applyLabel: APLICAR, showMove: false, short: "versão fixada" };
+      }
       // Build local (hook do main ou dist à mão): a versão não sobe a cada merge e nenhuma release é mais nova;
       // "versão mais recente" fazia parecer que este era o último publicado.
       if (u.buildLocal === true) return { text: `Build local${u.commit === "" ? "" : ` do commit ${u.commit}`}, à frente da última versão publicada${a === "" ? "" : ` (${a})`}. As mudanças chegam por aqui quando um novo build é empacotado, não pela release.`, kind: "ok", showApply: false, applyLabel: APLICAR, showMove: false, short: null };
@@ -101,4 +106,32 @@ const REPO = "https://github.com/diegofornalha/meu-bot";
 export function notasUrl(u: Pick<UpdateState, "buildLocal" | "current">): string {
   if (u.buildLocal === true) return `${REPO}/blob/main/docs/CHANGELOG.md`;
   return /^\d+\.\d+\.\d+(-staging\.\d+)?$/.test(u.current) ? `${REPO}/releases/tag/v${u.current}` : `${REPO}/releases`;
+}
+
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+/** "9 nov 2026" (o ano só quando não é o de `now`). */
+export function dataCurta(iso: string | null, now: number = Date.now()): string {
+  if (iso === null) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const ano = d.getFullYear() === new Date(now).getFullYear() ? "" : ` ${d.getFullYear()}`;
+  return `${d.getDate()} ${MESES[d.getMonth()]}${ano}`;
+}
+
+/**
+ * Uma linha da lista "Versões publicadas" (super admin): o selo, o botão (null = não instalável) e, no segundo
+ * clique (`confirmando`), o aviso do que muda. Voltar de versão é o caso que pede o aviso: os ajustes criados depois
+ * dela somem enquanto se está nela (voltam ao retornar) e, numa anterior a este recurso, a fixação dura a sessão.
+ */
+export function linhaRelease(r: ReleasePublicada, confirmando: boolean): { selo: string; kind: "muted" | "ok" | "warn" | "bad"; botao: string | null; aviso: string | null } {
+  if (r.relacao === "atual") return { selo: "instalada", kind: "ok", botao: null, aviso: null };
+  if (r.abaixoDaMinima) return { selo: "abaixo da mínima do backend", kind: "bad", botao: null, aviso: null };
+  if (r.motivo !== null) return { selo: r.motivo, kind: "bad", botao: null, aviso: null };
+  const velha = r.relacao === "mais-velha";
+  const selo = velha ? "mais velha" : "mais nova";
+  if (!confirmando) return { selo, kind: velha ? "warn" : "muted", botao: "Instalar esta", aviso: null };
+  const aviso = velha
+    ? `Voltar para a ${r.versao}: o app reinicia nela e fica fixado até alguém clicar em "Voltar a atualizar sozinho". Ajustes criados depois dela voltam ao padrão enquanto ela estiver aberta e retornam na volta. Se ela for anterior a este recurso, a fixação dura só até fechar o app.`
+    : `Instalar a ${r.versao}: o app reinicia nela e fica fixado até alguém clicar em "Voltar a atualizar sozinho".`;
+  return { selo, kind: velha ? "warn" : "muted", botao: `Confirmar: instalar a ${r.versao}`, aviso };
 }

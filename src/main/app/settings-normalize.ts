@@ -237,3 +237,16 @@ export function normalizeHostNames(v: unknown): Record<string, string> {
   }
   return out;
 }
+
+/**
+ * Configurações que uma versão mais velha apagou: ela regrava o settings.json só com os campos que conhece. O backup
+ * feito antes de o super admin voltar de versão traz o resto; aqui volta só o que FALTA (o que existe agora ganha,
+ * porque foi mudado depois). Raso de propósito: cada campo do arquivo é uma preferência inteira.
+ */
+export function mesclarCamposPerdidos(atual: unknown, backup: unknown): Record<string, unknown> {
+  const a = atual !== null && typeof atual === "object" && !Array.isArray(atual) ? (atual as Record<string, unknown>) : {};
+  const b = backup !== null && typeof backup === "object" && !Array.isArray(backup) ? (backup as Record<string, unknown>) : {};
+  const out: Record<string, unknown> = { ...a };
+  for (const [k, v] of Object.entries(b)) if (!(k in out)) out[k] = v;
+  return out;
+}

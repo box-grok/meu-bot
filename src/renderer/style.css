@@ -1222,3 +1222,16 @@ table.fin-abc tr.fin-abc-C td.fin-abc-tag { color: #757575; }
 .computador-tela { flex: 1; min-height: 320px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #000; }
 .computador-tela[hidden] { display: none; }
 .computador-webview { width: 100%; height: 100%; display: flex; }
+
+/* Versões publicadas (super admin), dentro de Sobre e atualização. */
+.releases-box { margin-top: 10px; }
+.releases-box > summary { cursor: pointer; font-size: 13px; }
+.releases-lista { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.releases-lista li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
+.releases-lista .rel-versao { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 9em; }
+.releases-lista .rel-data { color: var(--muted); min-width: 5em; }
+.releases-lista .rel-selo { color: var(--muted); flex: 1; min-width: 8em; }
+.releases-lista .rel-selo.ok { color: var(--ok); }
+.releases-lista .rel-selo.warn { color: var(--warn); }
+.releases-lista .rel-selo.bad { color: var(--bad); }
+.releases-lista .rel-aviso { flex-basis: 100%; margin: 0; color: var(--warn); }

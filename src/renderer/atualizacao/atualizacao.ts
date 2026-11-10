@@ -1,7 +1,9 @@
 import type { UpdateState } from "../../shared/ipc";
 import { byId as $ } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { updateStateText, updateBlockerText, updateNowButton, notasUrl, APLICAR, ATUALIZAR_AGORA } from "../lib/update-text.js";
+import { updateStateText, updateBlockerText, updateNowButton, notasUrl, linhaRelease, dataCurta, APLICAR, ATUALIZAR_AGORA } from "../lib/update-text.js";
+import { aoMudarConta, contaAtual } from "../conta/conta.js";
+import type { ReleasePublicada } from "../../shared/ipc";
 import { ctx } from "../app/ctx.js";
 
 /* ---------- Atualização automática (molde do Grok Bot): faixa com a versão pronta, ponto de progresso na barra,
@@ -15,6 +17,10 @@ const aboutSum = $<HTMLElement>("about-sum");
 const updateLine = $<HTMLElement>("update-line");
 const updateCheckBtn = $<HTMLButtonElement>("update-check-btn");
 const updateNowBtn = $<HTMLButtonElement>("update-now-btn");
+const updateSoltarBtn = $<HTMLButtonElement>("update-soltar-btn");
+const releasesBox = $<HTMLDetailsElement>("releases-box");
+const releasesStatus = $<HTMLElement>("releases-status");
+const releasesLista = $<HTMLUListElement>("releases-lista");
 const updateNotesBtn = $<HTMLButtonElement>("update-notes-btn");
 const updateApply2 = $<HTMLButtonElement>("update-apply-2");
 const updateMoveBtn = $<HTMLButtonElement>("update-move-btn");
@@ -42,6 +48,8 @@ export function paintUpdateState(u: UpdateState): void {
   updateLine.textContent = t.text;
   updateLine.className = `update-line ${t.kind === "muted" ? "" : t.kind}`.trim();
   updateCheckBtn.disabled = u.phase === "checking" || u.phase === "idle" || u.phase === "downloading" || u.phase === "verifying" || u.phase === "applying";
+  updateSoltarBtn.hidden = u.fixada === null || u.fixada === undefined;
+  updateSoltarBtn.disabled = false;
   const agora = updateNowButton(u);
   updateNowBtn.hidden = agora.hidden; updateNowBtn.disabled = agora.disabled; updateNowBtn.textContent = agora.label; updateNowBtn.title = agora.title;
   updateApply2.hidden = !t.showApply;
@@ -77,6 +85,51 @@ function applyFromButton(btn: HTMLButtonElement, onError: (msg: string) => void)
   btn.disabled = true; btn.textContent = forcar ? "Parando…" : "Reiniciando…";
   void window.meuBot.applyUpdate(v, forcar).catch((err: unknown) => { btn.disabled = false; btn.textContent = rotulo; onError(ipcErrorText(err)); });
 }
+/* ---------- Versões publicadas (só conta super admin; o main confere o papel no servidor a cada chamada) ---------- */
+let releases: ReleasePublicada[] = [];
+let confirmando: string | null = null;
+const ehSuper = (): boolean => contaAtual()?.conta?.admin === "super";
+function pintarReleases(): void {
+  releasesLista.replaceChildren();
+  for (const r of releases) {
+    const l = linhaRelease(r, confirmando === r.versao);
+    const li = document.createElement("li");
+    const v = document.createElement("span"); v.className = "rel-versao"; v.textContent = r.versao;
+    const d = document.createElement("span"); d.className = "rel-data"; d.textContent = dataCurta(r.publicadaEm);
+    const s = document.createElement("span"); s.className = `rel-selo ${l.kind === "muted" ? "" : l.kind}`.trim(); s.textContent = l.selo;
+    li.append(v, d, s);
+    if (l.botao !== null) {
+      const b = document.createElement("button"); b.type = "button";
+      b.className = `btn btn-small ${confirmando === r.versao ? "btn-primary" : "btn-ghost"}`; b.textContent = l.botao;
+      b.addEventListener("click", () => { if (confirmando !== r.versao) { confirmando = r.versao; pintarReleases(); return; } instalar(r.versao, b); });
+      li.append(b);
+    }
+    if (l.aviso !== null) { const p = document.createElement("p"); p.className = "rel-aviso"; p.textContent = l.aviso; li.append(p); }
+    releasesLista.append(li);
+  }
+}
+function instalar(versao: string, b: HTMLButtonElement): void {
+  b.disabled = true; b.textContent = "Preparando…";
+  releasesStatus.textContent = `Baixando e conferindo a ${versao}…`; releasesStatus.className = "update-line warn";
+  void window.meuBot.updateInstalarVersao(versao).then(paintUpdateState).catch((err: unknown) => {
+    confirmando = null; pintarReleases();
+    releasesStatus.textContent = `Não instalei a ${versao}: ${ipcErrorText(err)}`; releasesStatus.className = "update-line bad";
+  });
+}
+function carregarReleases(forcar = false): void {
+  releasesStatus.textContent = "Consultando as releases…"; releasesStatus.className = "update-line";
+  void window.meuBot.updateReleases(forcar).then((rs) => {
+    releases = rs; confirmando = null; pintarReleases();
+    releasesStatus.textContent = rs.length === 0 ? "Nenhuma release deste canal publicada." : ""; releasesStatus.className = "update-line";
+  }).catch((err: unknown) => { releases = []; pintarReleases(); releasesStatus.textContent = ipcErrorText(err); releasesStatus.className = "update-line bad"; });
+}
+/** A seção só aparece para super admin; quem deixa de ser (saiu, foi rebaixado) a vê sumir na próxima mudança da conta. */
+function pintarReleasesBox(): void {
+  const mostra = ehSuper() && ctx.caps.canal !== undefined;
+  releasesBox.hidden = !mostra;
+  if (!mostra) { releasesBox.open = false; releases = []; releasesLista.replaceChildren(); }
+}
+
 /** "Mover para Aplicativos": o app está numa pasta sem escrita; o main copia e reabre de lá. */
 function moveFromButton(btn: HTMLButtonElement, onError: (msg: string) => void): void {
   btn.disabled = true; btn.textContent = "Movendo…";
@@ -116,4 +169,11 @@ export function ligarAtualizacao(): void {
   ligarInterruptor(corretorInput, (v) => ({ corretorOrtografico: v }));
   ligarInterruptor(aceleracaoInput, (v) => ({ aceleracaoHardware: v }));
   window.meuBot.on("update:state", paintUpdateState);
+  updateSoltarBtn.addEventListener("click", () => {
+    updateSoltarBtn.disabled = true;
+    void window.meuBot.updateSoltarFixada().then(paintUpdateState).catch((err: unknown) => { updateSoltarBtn.disabled = false; updateLine.textContent = ipcErrorText(err); updateLine.className = "update-line bad"; });
+  });
+  releasesBox.addEventListener("toggle", () => { if (releasesBox.open) carregarReleases(); });
+  aoMudarConta(pintarReleasesBox);
+  pintarReleasesBox();
 }

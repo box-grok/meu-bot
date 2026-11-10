@@ -16,7 +16,9 @@ import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTermi
 import { isSupportAlias } from "../suporte/support-code";
 import { registrar, registrarVarios } from "../auditoria/auditoria";
 import { acaoDaMarca } from "../auditoria/auditoria-core";
-import { applyUpdate, atualizarAgora, checkNow, moverParaAplicativos, updateState } from "../atualizacao/updater";
+import { applyUpdate, atualizarAgora, checkNow, instalarVersao, moverParaAplicativos, releasesPublicadas, soltarFixada, updateState } from "../atualizacao/updater";
+import { motivoReleaseTexto } from "../atualizacao/updater-core";
+import type { ReleasePublicada } from "../../shared/ipc";
 import { checkNow as netCheckNow, hostIsLocalAddr } from "../app/net";
 import { claudeAuthInfo } from "../agente/claudeLogin";
 import { xaiAuthInfo } from "../agente/xaiLogin";
@@ -486,6 +488,22 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   handleShared("update:now", (event) => {
     if (hostFromEvent(event) === null) throw new Error("origem inválida");
     return atualizarAgora();
+  });
+  // Versões publicadas (super admin): o main confere o papel no servidor em cada chamada; a tela só esconde.
+  handleShared("update:releases", async (event, payload: unknown): Promise<ReleasePublicada[]> => {
+    if (hostFromEvent(event) === null) throw new Error("origem inválida");
+    const itens = await releasesPublicadas((payload as { forcar?: unknown } | null)?.forcar === true);
+    return itens.map((l) => ({ versao: l.versao, publicadaEm: l.publicadaEm, relacao: l.relacao, abaixoDaMinima: l.abaixoDaMinima, motivo: l.candidata === null ? motivoReleaseTexto(l.versao, l.motivo ?? "corpo-inesperado") : null }));
+  });
+  handleShared("update:instalar-versao", (event, payload: unknown) => {
+    if (hostFromEvent(event) === null) throw new Error("origem inválida");
+    const v = (payload as { versao?: unknown } | null)?.versao;
+    if (typeof v !== "string" || v === "") throw new Error("versão inválida");
+    return instalarVersao(v);
+  });
+  handleShared("update:soltar-fixada", (event) => {
+    if (hostFromEvent(event) === null) throw new Error("origem inválida");
+    return soltarFixada();
   });
   handleShared("net:check", (_event, payload: unknown) => netCheckNow((payload as { force?: unknown } | null)?.force === true));
   handleShared("host:local-addr", (event) => { const h = hostFromEvent(event)?.host; return h === undefined ? false : hostIsLocalAddr(h); });

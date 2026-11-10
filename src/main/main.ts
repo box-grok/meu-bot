@@ -18,12 +18,12 @@ import { adminPickerSource } from "./admin/picker-source";
 import { migrateAdminPessoas } from "./admin/user-data";
 import { herdarDe, useVariantUserData, fundirDe, relatorioFusao } from "./app/user-data";
 import { registerIpc } from "./ipc/index";
-import { applyStagedOnQuit, onAntesDeRelancar, applyUpdate as applyUpdateNow, atualizarAgora as atualizarAgoraNow, checkIfStale as checkUpdateIfStale, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork, noteVersaoMinima, onUpdateState, updateMenuState } from "./atualizacao/updater";
+import { applyStagedOnQuit, onAntesDeRelancar, onAntesDeVoltar, onExigeSuper, applyUpdate as applyUpdateNow, atualizarAgora as atualizarAgoraNow, checkIfStale as checkUpdateIfStale, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork, noteVersaoMinima, onUpdateState, updateMenuState } from "./atualizacao/updater";
 import { checkNow as checkNetNow, disposeNet, initNet, onBackOnline } from "./app/net";
 import { installBrowserHooks } from "./navegador/browser";
 import { startTermApi } from "./terminal/term-api";
 import { startControleRemoto, stopControleRemoto } from "./controle-remoto/controle-remoto";
-import { getBackendPort, getControleRemoto } from "./app/settings";
+import { getBackendPort, getControleRemoto, guardarAntesDeVoltar } from "./app/settings";
 import { installAppMenu, refreshAppMenu } from "./app/menu";
 import { changeWindowZoom } from "./app/zoom";
 import { clientPickerSource, initPicker, seletorPodeAbrirAgora, showPicker } from "./maquina/picker";
@@ -35,7 +35,7 @@ import { allMainWindows, broadcast, disposeWindows, getLastFocusedHost, hostOfWi
 import { esquemaDe } from "./app/variant-core";
 import { aoReceberUrl, instalarOpenUrl, registrarEsquema, tratarArgv } from "./conta/deep-link";
 import { parseLinkConfiguracoes } from "./conta/deep-link-core";
-import { aoRetornarAuth, aoRetorno, aoSair, contaEntrada } from "./conta/conta";
+import { aoRetornarAuth, aoRetorno, aoSair, contaEntrada, papelConfirmado } from "./conta/conta";
 
 // Cada produto além do meu-bot tem userData próprio (senão dividiria pasta e trava de instância). Antes de tudo.
 // O admin traz o pessoas.json antigo; um produto da pessoa (meu-bot-finance-staging…) nasce como cópia do meu-bot dela.
@@ -121,6 +121,14 @@ app.whenReady().then(() => {
   // A troca sai por app.exit (sem will-quit): o backend local e o proxy da xAI deste Mac fecham antes, senão ficam
   // órfãos segurando a porta e o app reaberto não sobe os dele.
   onAntesDeRelancar(() => { closeTunnel(); });
+  // Escolher a versão (super admin): o papel vem do servidor na hora; voltar guarda as configurações que a velha apagaria.
+  onExigeSuper(async () => {
+    const p = await papelConfirmado();
+    if (p === null) throw new Error("não consegui confirmar a sua conta agora (entre na conta e confira a internet)");
+    if (p.admin !== "super") throw new Error("só um super admin pode escolher a versão do app");
+    return p.email;
+  });
+  onAntesDeVoltar(guardarAntesDeVoltar);
   // O backend de cada máquina diz no hello a versão mínima do app que atende: abaixo dela, a janela bloqueia até atualizar.
   onVersaoMinima(noteVersaoMinima);
   // Internet deste Mac (faixa OFFLINE). Quando volta: revalida os túneis, reabre o das janelas abertas que
