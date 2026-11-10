@@ -35,7 +35,13 @@ export const pct = (p: number | null): string => (p === null ? "" : `${Math.floo
 export function updateStateText(u: UpdateState, appName: string, now: number = Date.now()): UpdateText {
   switch (u.phase) {
     case "checking": return { text: "Verificando atualizações…", kind: "muted", showApply: false, applyLabel: APLICAR, showMove: false, short: "verificando atualizações…" };
-    case "up-to-date": { const a = ago(u.checkedAt, now); return { text: `Você está na versão mais recente${a === "" ? "" : ` (${a})`}.`, kind: "ok", showApply: false, applyLabel: APLICAR, showMove: false, short: null }; }
+    case "up-to-date": {
+      const a = ago(u.checkedAt, now);
+      // Build local (hook do main ou dist à mão): a versão não sobe a cada merge e nenhuma release é mais nova;
+      // "versão mais recente" fazia parecer que este era o último publicado.
+      if (u.buildLocal === true) return { text: `Build local${u.commit === "" ? "" : ` do commit ${u.commit}`}, à frente da última versão publicada${a === "" ? "" : ` (${a})`}. As mudanças chegam por aqui quando um novo build é empacotado, não pela release.`, kind: "ok", showApply: false, applyLabel: APLICAR, showMove: false, short: null };
+      return { text: `Você está na versão mais recente${a === "" ? "" : ` (${a})`}.`, kind: "ok", showApply: false, applyLabel: APLICAR, showMove: false, short: null };
+    }
     case "available": return { text: `Nova versão ${u.available ?? ""} disponível, baixando…`, kind: "warn", showApply: false, applyLabel: APLICAR, showMove: false, short: "baixando a atualização…" };
     case "downloading": { const p = pct(u.progress); return { text: `Baixando a versão ${u.available ?? ""}…${p === "" ? "" : ` ${p}`}`, kind: "warn", showApply: false, applyLabel: APLICAR, showMove: false, short: `baixando${p === "" ? "…" : ` ${p}`}` }; }
     case "verifying": return { text: `Conferindo a versão ${u.available ?? ""}…`, kind: "warn", showApply: false, applyLabel: APLICAR, showMove: false, short: "conferindo a atualização…" };
@@ -72,4 +78,27 @@ export function updateBlockerText(u: UpdateState, appName: string): { title: str
   // Com o backend exigindo uma versão nova e o app numa pasta sem escrita, mover é o ÚNICO caminho para destravar:
   // o botão tem de estar aqui também, senão esta tela só sabe mandar a pessoa baixar à mão.
   return { title: "Atualização necessária", text: `Esta máquina precisa do ${appName} ${min} ou mais novo (este é o ${u.current}).${motivo === "" ? "" : ` ${motivo}`}`, showApply: false, applyLabel: APLICAR, showMove: u.phase === "needs-move", showManual: true };
+}
+
+export const ATUALIZAR_AGORA = "Atualizar agora";
+/**
+ * Botão "Atualizar agora" (verifica, baixa e reinicia num clique). Some quando "Reiniciar e atualizar" ou "Mover para
+ * Aplicativos" já são a ação; no meio do caminho mostra que está trabalhando; num build local fica desligado com a
+ * dica, porque a release só levaria para trás (o atualizador recusa) e a versão nova vem de empacotar de novo.
+ */
+export function updateNowButton(u: UpdateState): { hidden: boolean; disabled: boolean; label: string; title: string } {
+  const t = updateStateText(u, "");
+  const emCurso = u.phase === "checking" || u.phase === "available" || u.phase === "downloading" || u.phase === "verifying" || u.phase === "applying";
+  if (u.buildLocal === true) return { hidden: t.showApply || t.showMove, disabled: true, label: ATUALIZAR_AGORA, title: "Este build vem de empacotar o código deste Mac (o rebuild do main), não de uma release: ele se atualiza quando um novo build é instalado." };
+  return { hidden: t.showApply || t.showMove, disabled: emCurso || u.phase === "idle", label: emCurso ? "Atualizando…" : ATUALIZAR_AGORA, title: "Procura a versão mais nova, baixa e reinicia o app nela." };
+}
+
+const REPO = "https://github.com/diegofornalha/meu-bot";
+/**
+ * "Notas de lançamento": num build local, o CHANGELOG do main (a seção "Ainda não lançado" é o que ele traz e nenhuma
+ * release tem); numa release, a página da própria versão em vez da lista inteira.
+ */
+export function notasUrl(u: Pick<UpdateState, "buildLocal" | "current">): string {
+  if (u.buildLocal === true) return `${REPO}/blob/main/docs/CHANGELOG.md`;
+  return /^\d+\.\d+\.\d+(-staging\.\d+)?$/.test(u.current) ? `${REPO}/releases/tag/v${u.current}` : `${REPO}/releases`;
 }

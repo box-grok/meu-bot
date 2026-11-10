@@ -31,12 +31,12 @@ export const produto = (): Produto => produtoDe(appVariant());
 let compilacaoCache: Compilacao | null = null;
 export function compilacao(): Compilacao {
   if (compilacaoCache !== null) return compilacaoCache;
-  let c: Compilacao = app.isPackaged ? { commit: "", branch: "", em: "" } : { commit: "dev", branch: "dev", em: "" };
+  let c: Compilacao = app.isPackaged ? { commit: "", branch: "", em: "", origem: "release" } : { commit: "dev", branch: "dev", em: "", origem: "local" };
   if (app.isPackaged) {
     try {
       const j = JSON.parse(fs.readFileSync(path.join(process.resourcesPath, "build.json"), "utf8")) as Partial<Compilacao>;
-      c = { commit: typeof j.commit === "string" ? j.commit : "", branch: typeof j.branch === "string" ? j.branch : "", em: typeof j.em === "string" ? j.em : "" };
-    } catch { /* build sem o arquivo (empacotado antes de 31 out): fica vazio */ }
+      c = { commit: typeof j.commit === "string" ? j.commit : "", branch: typeof j.branch === "string" ? j.branch : "", em: typeof j.em === "string" ? j.em : "", origem: j.origem === "local" ? "local" : "release" };
+    } catch { /* build sem o arquivo (empacotado antes de 31 out): fica vazio; sem `origem` (antes de 10 nov) conta como release */ }
   }
   compilacaoCache = c;
   return c;

@@ -20,7 +20,7 @@ export const SHARED_CHANNELS = [
   // terminal na máquina da janela (os dois apps; no admin a pessoa vê no registro dela)
   "term:open", "term:input", "term:resize", "term:close", "term:replay",
   // atualização automática do próprio app
-  "update:state", "update:apply", "update:check", "update:mover", "find:start", "find:stop",
+  "update:state", "update:apply", "update:check", "update:now", "update:mover", "find:start", "find:stop",
   // internet deste Mac (faixa OFFLINE) e "a máquina desta janela é este Mac?"
   "net:check", "host:local-addr",
   // modo de depuração (faixa no topo): estado e ligar/desligar

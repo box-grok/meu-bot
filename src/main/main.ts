@@ -18,7 +18,7 @@ import { adminPickerSource } from "./admin/picker-source";
 import { migrateAdminPessoas } from "./admin/user-data";
 import { herdarDe, useVariantUserData, fundirDe, relatorioFusao } from "./app/user-data";
 import { registerIpc } from "./ipc/index";
-import { applyStagedOnQuit, applyUpdate as applyUpdateNow, checkIfStale as checkUpdateIfStale, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork, noteVersaoMinima, onUpdateState, updateMenuState } from "./atualizacao/updater";
+import { applyStagedOnQuit, applyUpdate as applyUpdateNow, atualizarAgora as atualizarAgoraNow, checkIfStale as checkUpdateIfStale, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork, noteVersaoMinima, onUpdateState, updateMenuState } from "./atualizacao/updater";
 import { checkNow as checkNetNow, disposeNet, initNet, onBackOnline } from "./app/net";
 import { installBrowserHooks } from "./navegador/browser";
 import { startTermApi } from "./terminal/term-api";
@@ -108,6 +108,7 @@ app.whenReady().then(() => {
     atualizacao: {
       estado: updateMenuState,
       verificar: () => { void checkUpdateNow("explicito"); },
+      atualizarAgora: () => { void atualizarAgoraNow().catch((e: unknown) => log(`[atualização] "Atualizar agora" pelo menu: ${e instanceof Error ? e.message : String(e)}`)); },
       aplicar: (versao) => { void applyUpdateNow(versao, "clique").catch((e: unknown) => log(`[atualização] pelo menu: ${e instanceof Error ? e.message : String(e)}`)); },
     },
   });

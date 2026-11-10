@@ -12,6 +12,14 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### Atualizar agora, num clique
+#### Novo
+- **Botão "Atualizar agora"** em Configurações › Sobre e atualização e no menu do app: procura a versão mais nova, baixa e reinicia nela, sem esperar a verificação de hora em hora. Com uma resposta em andamento, ele pergunta antes de interromper, como o "Reiniciar e atualizar".
+#### Melhorado
+- Sobre e atualização mostra de que commit veio o app aberto, ao lado da versão.
+- Num app empacotado neste Mac (fora de uma release), a tela diz "Build local do commit …" em vez de "Você está na versão mais recente": a versão dele não muda a cada mudança no código, e nenhuma versão publicada é mais nova.
+- "Notas de lançamento" abre a página da versão instalada; num build local, abre o que vem na próxima versão.
+
 ### Baixar o meu-bot: um instalador de verdade
 #### Melhorado
 - O botão de download do site entrega um instalador: abre uma janela com o meu-bot e a pasta Aplicativos, e é só arrastar. Antes vinha um .zip e o app ficava solto em Downloads. Vale para o site e para o site de staging, cada um com o seu app.

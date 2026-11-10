@@ -1,7 +1,7 @@
 import type { UpdateState } from "../../shared/ipc";
 import { byId as $ } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { updateStateText, updateBlockerText, APLICAR } from "../lib/update-text.js";
+import { updateStateText, updateBlockerText, updateNowButton, notasUrl, APLICAR, ATUALIZAR_AGORA } from "../lib/update-text.js";
 import { ctx } from "../app/ctx.js";
 
 /* ---------- Atualização automática (molde do Grok Bot): faixa com a versão pronta, ponto de progresso na barra,
@@ -14,6 +14,7 @@ const aboutVersion = $<HTMLElement>("about-version");
 const aboutSum = $<HTMLElement>("about-sum");
 const updateLine = $<HTMLElement>("update-line");
 const updateCheckBtn = $<HTMLButtonElement>("update-check-btn");
+const updateNowBtn = $<HTMLButtonElement>("update-now-btn");
 const updateNotesBtn = $<HTMLButtonElement>("update-notes-btn");
 const updateApply2 = $<HTMLButtonElement>("update-apply-2");
 const updateMoveBtn = $<HTMLButtonElement>("update-move-btn");
@@ -36,11 +37,13 @@ export function paintUpdateState(u: UpdateState): void {
   const t = updateStateText(u, ctx.caps.nome);
   updateCheckDot.textContent = t.short ?? "";
   updateCheckDot.hidden = t.short === null;
-  aboutVersion.textContent = `${ctx.caps.nome} ${u.current} · ${navigator.userAgent.includes("Intel") ? "Intel" : "Apple Silicon"}`;
+  aboutVersion.textContent = `${ctx.caps.nome} ${u.current}${u.commit === "" ? "" : ` · ${u.commit}`}${u.buildLocal ? " (build local)" : ""} · ${u.arch === "arm64" ? "Apple Silicon" : "Intel"}`;
   aboutSum.textContent = `versão ${u.current}`;
   updateLine.textContent = t.text;
   updateLine.className = `update-line ${t.kind === "muted" ? "" : t.kind}`.trim();
   updateCheckBtn.disabled = u.phase === "checking" || u.phase === "idle" || u.phase === "downloading" || u.phase === "verifying" || u.phase === "applying";
+  const agora = updateNowButton(u);
+  updateNowBtn.hidden = agora.hidden; updateNowBtn.disabled = agora.disabled; updateNowBtn.textContent = agora.label; updateNowBtn.title = agora.title;
   updateApply2.hidden = !t.showApply;
   updateApply2.disabled = false;
   updateApply2.textContent = t.applyLabel;
@@ -94,7 +97,14 @@ function ligarInterruptor(input: HTMLInputElement, campo: (v: boolean) => Record
 /** Liga eventos e o estado inicial desta parte; o renderer.ts chama uma vez, no ponto em que isto rodava antes. */
 export function ligarAtualizacao(): void {
   updateCheckBtn.addEventListener("click", () => { updateCheckBtn.disabled = true; void window.meuBot.checkUpdate().then(paintUpdateState).catch(() => { updateCheckBtn.disabled = false; }); });
-  updateNotesBtn.addEventListener("click", () => { void window.meuBot.openExternal(RELEASES_URL); });
+  updateNowBtn.addEventListener("click", () => {
+    updateNowBtn.disabled = true; updateNowBtn.textContent = "Atualizando…";
+    void window.meuBot.updateNow().then(paintUpdateState).catch((err: unknown) => {
+      updateNowBtn.disabled = false; updateNowBtn.textContent = ATUALIZAR_AGORA;
+      updateLine.textContent = `Não consegui atualizar: ${ipcErrorText(err)}`; updateLine.className = "update-line bad";
+    });
+  });
+  updateNotesBtn.addEventListener("click", () => { void window.meuBot.openExternal(lastUpdate === null ? RELEASES_URL : notasUrl(lastUpdate)); });
   updateBlockerManual.addEventListener("click", () => { void window.meuBot.openExternal(RELEASES_URL); });
   updateApply2.addEventListener("click", () => applyFromButton(updateApply2, (msg) => { updateLine.textContent = `Não consegui atualizar: ${msg}`; updateLine.className = "update-line bad"; }));
   updateApply.addEventListener("click", () => applyFromButton(updateApply, (msg) => { updateText.textContent = `Não consegui atualizar: ${msg}`; }));

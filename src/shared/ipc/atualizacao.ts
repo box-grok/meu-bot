@@ -15,7 +15,7 @@ export type UpdatePhase = "idle" | "checking" | "up-to-date" | "available" | "do
  */
 export type UpdateErrorKind = "rede" | "github" | "release" | "download" | "assinatura" | "disco" | "outro";
 /** Quem disparou a verificação (vai no registro). */
-export type UpdateTrigger = "inicio" | "periodico" | "explicito" | "rede-voltou" | "acordou" | "confirmar" | "versao-minima";
+export type UpdateTrigger = "inicio" | "periodico" | "explicito" | "rede-voltou" | "acordou" | "confirmar" | "versao-minima" | "atualizar-agora";
 export interface UpdateState {
   current: string;
   available: string | null;
@@ -39,6 +39,15 @@ export interface UpdateState {
   /** Versão mínima que o backend da máquina exige (null = ele não disse); abaixo dela a janela bloqueia até atualizar. */
   minima: string | null;
   abaixoDaMinima: boolean;
+  /**
+   * Build que não saiu de uma release (o hook ou um `npm run dist…` empacotou o main ou um branch): a versão dele
+   * não muda a cada merge e nada publicado é mais novo; a tela diz isso em vez de "versão mais recente".
+   */
+  buildLocal: boolean;
+  /** Arquitetura do processo (process.arch): o user agent do Chromium no Mac diz "Intel" até no Apple Silicon. */
+  arch: "arm64" | "x64";
+  /** Commit de onde o build saiu (Resources/build.json); "" se não se sabe. */
+  commit: string;
   /** Preferência "atualizar sozinho quando o Mac estiver ocioso" (Configurações › Sobre e atualização). */
   atualizarOcioso: boolean;
 }
