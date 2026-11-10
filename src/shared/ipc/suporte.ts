@@ -80,15 +80,17 @@ export interface BotChat {
 }
 export interface BotMessage { role: "person" | "agent" | "tool"; text: string; at: string; /** Quem respondeu (só no diário). */ provider?: string }
 /** Saúde da máquina da pessoa; `whatsapp` e `progress` vêm null quando ela não compartilha (ver `share`). */
-export interface AdminHealth { probe: HostProbe; whatsapp: WhatsappStatus | null; progress: SupportProgress | null; share: SupportShare; /** Conta da xAI na máquina; null = Grok não preparado (sem o hermes-agent do proxy). */ xai: ClaudeAuthInfo | null; /** Licença e devices da conta; null = máquina fora do ar ou backend antigo sem a rota. */ license: LicenseView | null }
+export interface AdminHealth { probe: HostProbe; whatsapp: WhatsappStatus | null; progress: SupportProgress | null; share: SupportShare; /** Conta da xAI na máquina; null = Grok não preparado (sem o hermes-agent do proxy). */ xai: ClaudeAuthInfo | null; /** Licença e devices da conta; null = máquina fora do ar ou backend antigo sem a rota. */ license: LicenseView | null; /** Aberturas recentes do app nesta máquina (aberturas.jsonl, mais nova primeiro); null = sem registro (backend antigo ou ninguém abriu ainda). */ aberturas?: Abertura[] | null; /** Só no "este Mac": o backend de cada app meu-bot deste Mac (cada um sobe o seu ao abrir), no lugar do backend de VM. */ appsDoMac?: { nome: string; porta: number; noAr: boolean }[] }
+/** Uma abertura do app na máquina: quando, qual app (meu-bot = produção, meu-bot-staging = staging), versão e Mac. */
+export interface Abertura { em: string; produto: string; versao: string; mac: string; user: string }
 /** Progresso da pessoa nos tutoriais (o meu-bot dela grava na máquina com o suporte ligado). */
 export interface SupportProgress {
   at: string;
   tour: "done" | "skipped" | "pending";
   tutorials: { id: string; title: string; done: number; total: number; current: string | null; finished: boolean; comingSoon: boolean }[];
 }
-/** Ações do admin na máquina da pessoa. "support-off" tira o próprio acesso (ex.: deixou de pagar); só o admin desliga. */
-export type AdminAction = "install-backend" | "restart-gateway" | "restart-backend" | "transcription" | "transcription-off" | "support-off";
+/** Ações do admin na máquina da pessoa. "support-off" tira o próprio acesso (ex.: deixou de pagar); só o admin desliga. "support-on" só existe no "este Mac" (o Mac do admin): religa o que ele desligou. */
+export type AdminAction = "install-backend" | "restart-gateway" | "restart-backend" | "transcription" | "transcription-off" | "support-off" | "support-on";
 
 /** O que o renderer vê em `window.picker`: os três grupos juntos (o main recusa o que não é da variante). */
 /** Uma ação no registro central de uma máquina, já com o texto da tela. */

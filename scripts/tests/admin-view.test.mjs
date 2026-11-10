@@ -201,5 +201,22 @@ test("visibleActions: este Mac não tem Instalar nem Reiniciar o backend (o back
   assert.ok(visibleActions(h).some((o) => o.id === "install-backend"), "outra pessoa sem backend: Instalar aparece");
   const ids = visibleActions(h, true).map((o) => o.id);
   assert.ok(!ids.includes("install-backend") && !ids.includes("restart-backend"));
-  assert.ok(ids.includes("restart-gateway") && ids.includes("support-off"));
+  assert.ok(!ids.includes("restart-gateway") && ids.includes("support-off"), "gateway do WhatsApp só existe nas máquinas");
+});
+
+test("visibleActions: Religar o suporte só no este Mac desligado; desligado nas outras pessoas não sobra ação", () => {
+  const h = { probe: { reachable: true, backendInstalled: true }, whatsapp: null };
+  assert.ok(!visibleActions(h, true).some((o) => o.id === "support-on"), "ligado: sem Religar");
+  assert.deepEqual(visibleActions(h, true, true).map((o) => o.id), ["support-on"], "este Mac desligado: só Religar");
+  assert.deepEqual(visibleActions(h, false, true).map((o) => o.id), [], "outra pessoa desligada: quem religa é ela");
+  assert.ok(!visibleActions(h).some((o) => o.id === "support-on"));
+});
+
+test("este Mac: a linha do backend é a dos apps abertos; nenhum aberto é neutro; Reiniciar gateway some", async () => {
+  const { linhaAppsDoMac } = await import("../../dist/renderer/lib/admin-view.js");
+  assert.deepEqual(linhaAppsDoMac([{ nome: "meu-bot", porta: 8790, noAr: false }, { nome: "meu-bot-staging", porta: 8791, noAr: true }]), { text: "backend dos apps no ar: meu-bot-staging (8791)", ok: true });
+  assert.equal(linhaAppsDoMac([{ nome: "meu-bot", porta: 8790, noAr: false }]).ok, null);
+  const h = { probe: { reachable: true, backendInstalled: true }, whatsapp: null };
+  assert.ok(!visibleActions(h, true).some((o) => o.id === "restart-gateway"));
+  assert.ok(visibleActions(h).some((o) => o.id === "restart-gateway"));
 });

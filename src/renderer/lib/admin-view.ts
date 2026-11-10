@@ -2,7 +2,7 @@
  * Variante: admin. Textos e linhas da página "Suporte" do meu-bot-admin e do seletor de pessoas, sem DOM.
  * Puro: testável com node --test. O desenho fica em admin/suporte-page.ts e admin/picker-chrome.ts.
  */
-import type { AdminAction, AdminHealth, LicenseDevice, LicenseView, PrepararVisao, SupportPerson, SupportProgress } from "../../shared/ipc";
+import type { Abertura, AdminAction, AdminHealth, LicenseDevice, LicenseView, PrepararVisao, SupportPerson, SupportProgress } from "../../shared/ipc";
 import { tutorialNumber } from "./tutoriais.js";
 
 /** Preparar máquina: um item por linha; ok → ✓, falta → ✗ com o detalhe, humano → • com o que a pessoa faz. */
@@ -26,6 +26,7 @@ export const ADMIN_ACTIONS: readonly { id: AdminAction; label: string; confirm: 
   { id: "transcription", label: "Ativar a transcrição de áudio", confirm: "Confirmar? baixa ~500 MB na máquina dela" },
   { id: "transcription-off", label: "Desativar a transcrição de áudio", confirm: "Confirmar? o agente dela deixa de entender áudios" },
   { id: "support-off", label: "Desligar o suporte desta pessoa", confirm: "Confirmar? o seu acesso a esta máquina acaba agora" },
+  { id: "support-on", label: "Religar o suporte deste Mac", confirm: "Confirmar? o admin volta a entrar neste Mac" },
 ];
 
 /** Uma linha da lista de saúde/progresso: ✓ (ok), ✗ (bad) ou • (null). */
@@ -34,13 +35,20 @@ export interface HealthLine { text: string; ok: boolean | null; step?: string }
 /** MB → "12 GB" / "820 MB" (uma casa só abaixo de 10 GB). */
 export const gb = (mb: number): string => (mb >= 10_240 ? `${Math.round(mb / 1024)} GB` : mb >= 1024 ? `${(mb / 1024).toFixed(1).replace(".", ",")} GB` : `${Math.round(mb)} MB`);
 
+/** "este Mac": o backend é o de cada app aberto; nenhum aberto não é defeito (sobe quando um abrir). */
+export function linhaAppsDoMac(apps: readonly { nome: string; porta: number; noAr: boolean }[]): HealthLine {
+  const noAr = apps.filter((a) => a.noAr);
+  return noAr.length > 0
+    ? { text: `backend dos apps no ar: ${noAr.map((a) => `${a.nome} (${a.porta})`).join(", ")}`, ok: true }
+    : { text: "nenhum app meu-bot aberto: o backend de cada app sobe quando ele abre", ok: null };
+}
 export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) => string): HealthLine[] {
   const p = h.probe;
   const lines: HealthLine[] = [];
   // Versão e última abertura do app dela ficam nos devices da licença (cada app se apresenta ao abrir), não aqui.
   lines.push(
     { text: p.reachable ? `entra por SSH (${p.user ?? "?"} · ${p.os ?? "?"})` : `não entra por SSH: ${p.error ?? "sem detalhes"}`, ok: p.reachable },
-    { text: p.backendListening ? "backend do meu-bot no ar" : p.backendInstalled ? "backend instalado mas parado" : "sem o backend do meu-bot", ok: p.backendListening },
+    h.appsDoMac !== undefined ? linhaAppsDoMac(h.appsDoMac) : { text: p.backendListening ? "backend do meu-bot no ar" : p.backendInstalled ? "backend instalado mas parado" : "sem o backend do meu-bot", ok: p.backendListening },
     { text: p.claudeLoggedIn ? "Claude Code logado" : "Claude Code deslogado", ok: p.claudeLoggedIn },
     h.xai === null ? { text: "xAI (Grok): não preparada nesta máquina", ok: null }
       : h.xai.loggedIn ? { text: `xAI (Grok) logada${h.xai.email !== null ? ` (${h.xai.email})` : ""}`, ok: true }
@@ -139,6 +147,20 @@ export function deviceLine(d: LicenseDevice, now: number = Date.now()): HealthLi
   return { text: `${p.name} · ${p.meta} · ${p.status}${p.seen !== "" ? ` · ${p.seen}` : ""}`, ok: p.ok };
 }
 
+/** Canal pelo nome do app: meu-bot-staging (e outros -staging) é staging; o resto é produção. */
+export const canalDoProduto = (produto: string): "staging" | "produção" => (/-staging$/.test(produto) ? "staging" : "produção");
+const quandoCurto = (iso: string): string => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+/** Uso do app: a última abertura de cada app (produção, staging…), mais recente primeiro, com a versão. */
+export function usoResumo(ab: readonly Abertura[], now: number = Date.now()): HealthLine[] {
+  const ultima = new Map<string, Abertura>();
+  for (const a of ab) if (!ultima.has(a.produto)) ultima.set(a.produto, a);
+  return [...ultima.values()].map((a) => ({ text: `${canalDoProduto(a.produto) === "staging" ? "Staging" : "Produção"} (${a.produto}): versão ${a.versao} · aberto ${agoText(a.em, now) || quandoCurto(a.em)}`, ok: null }));
+}
+/** Uma linha do histórico: quando, app (canal), versão e o Mac. */
+export const aberturaTexto = (a: Abertura): string =>
+  `${quandoCurto(a.em)} · ${a.produto} (${canalDoProduto(a.produto)}) ${a.versao}${a.mac !== "" ? ` · ${a.mac}` : ""}`;
+export const USO_VAZIO_TEXTO = "Ainda sem registro: as aberturas aparecem aqui quando o app da pessoa abrir com o backend atualizado.";
+
 export function progressLines(prog: SupportProgress): HealthLine[] {
   const lines: HealthLine[] = [
     { text: prog.tour === "done" ? "Tour do meu-bot: feito" : prog.tour === "skipped" ? "Tour do meu-bot: pulado" : "Tour do meu-bot: não feito", ok: prog.tour === "done" },
@@ -172,10 +194,16 @@ export const ESTE_MAC_MAQUINA = "este-mac";
  * abrir). O instalador é o das VMs Linux: aqui, sem systemd, ele subia o backend em primeiro plano e o "Rodando…" não
  * acabava (10 nov 2026).
  */
-export const ESTE_MAC_BACKEND_TEXTO = "Neste Mac o backend é o dos apps meu-bot: cada app (meu-bot, staging…) sobe o seu ao abrir. Para reiniciar, feche e abra o app.";
-export const visibleActions = (h: AdminHealth | null, esteMac = false): readonly (typeof ADMIN_ACTIONS)[number][] =>
+export const ESTE_MAC_BACKEND_TEXTO = "Neste Mac o backend é o dos apps meu-bot: cada app (meu-bot, staging…) sobe o seu ao abrir; para reiniciar, feche e abra o app. O agente do WhatsApp (e o gateway dele) só roda nas máquinas, por isso não há o que reiniciar aqui.";
+/**
+ * `desligado`: o admin acabou de desligar o suporte nesta janela. No este Mac sobra só "Religar" (o admin pode, a
+ * máquina é dele); nas outras pessoas não sobra nada: quem religa é ela, no app dela.
+ */
+export const visibleActions = (h: AdminHealth | null, esteMac = false, desligado = false): readonly (typeof ADMIN_ACTIONS)[number][] =>
   ADMIN_ACTIONS.filter((o) => {
-    if (esteMac && (o.id === "install-backend" || o.id === "restart-backend")) return false;
+    if (o.id === "support-on") return esteMac && desligado;
+    if (desligado) return false;
+    if (esteMac && (o.id === "install-backend" || o.id === "restart-backend" || o.id === "restart-gateway")) return false;
     // Instalar só aparece quando a máquina está sem backend (com ele, "Reiniciar"); sem saúde ainda, não aparece.
     if (o.id === "install-backend") return h !== null && h.probe.reachable && !h.probe.backendInstalled;
     if (o.id === "restart-backend") return h === null || h.probe.backendInstalled;

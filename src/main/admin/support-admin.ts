@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
-import type { AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, LicenseView, Pagamento, SupportPerson, SupportProgress, SupportShare, PlanName } from "../../shared/ipc";
+import type { Abertura, AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, LicenseView, Pagamento, SupportPerson, SupportProgress, SupportShare, PlanName } from "../../shared/ipc";
 import { applyLicensePatch, parseLicense, parsePagamento } from "../licenca/licenca";
 import { LICENSE_PATH, MACHINES_PATH, readLicenseViewSsh as readLicenseView } from "../licenca/licenca-maquina";
 import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
@@ -30,6 +30,9 @@ import { broadcast } from "../app/windows";
 import { xaiAuthInfo } from "../agente/xaiLogin";
 import { getBackendPort, isValidHost, setBackendPortForHost, settingsView } from "../app/settings";
 import { log } from "../maquina/backend";
+import net from "node:net";
+import { PRODUTOS } from "../app/variant-core";
+import { parseAberturas } from "./aberturas-core";
 
 /** `superAdmin`: este app lê a central de auditoria (página Auditoria). `backupDestinatario`: chave age pública do super admin (backups). */
 /** `pagamentoPadrao`: orientação de pagamento (Pix, link) gravada em toda licença que ainda não tem uma, ao mexer nela. */
@@ -316,10 +319,37 @@ async function adoptSshHost(host: string): Promise<SupportCode> {
   return { v: 1, name: host.slice(0, 40), ...target, hostKey, state: "on", at: new Date().toISOString(), ...(/^[A-Za-z0-9._-]{1,64}$/.test(host) ? { machine: host } : {}) };
 }
 
+/** A porta responde em 127.0.0.1 (1,5 s)? */
+const portaNoAr = (porta: number): Promise<boolean> => new Promise((resolve) => {
+  const s = net.connect({ host: "127.0.0.1", port: porta });
+  const fim = (ok: boolean): void => { s.destroy(); resolve(ok); };
+  s.setTimeout(1500, () => fim(false)); s.once("connect", () => fim(true)); s.once("error", () => fim(false));
+});
+/**
+ * O backend do "este Mac" é o de cada app meu-bot com chat (meu-bot, staging…): sobe com o app, na portaLocal dele.
+ * O admin roda neste mesmo Mac, então confere as portas direto, sem SSH. Admins ficam de fora (não têm backend).
+ */
+async function appsDoMac(): Promise<{ nome: string; porta: number; noAr: boolean }[]> {
+  const apps = PRODUTOS.filter((p) => p.caps.chat);
+  return Promise.all(apps.map(async (p) => ({ nome: p.nome, porta: p.portaLocal, noAr: await portaNoAr(p.portaLocal) })));
+}
+
 /** Este Mac como pessoa do suporte: o próprio usuário, por SSH em 127.0.0.1 (Sessão remota do macOS). */
 const ESTE_MAC = { name: "este Mac", hostname: "127.0.0.1", port: 22, machine: "este-mac" } as const;
 const ehEsteMac = (c: SupportCode): boolean => c.hostname === ESTE_MAC.hostname && c.user === os.userInfo().username && c.port === ESTE_MAC.port;
 /** Alias de suporte deste Mac, se ele já é pessoa (e com o suporte ligado); null se ainda não. */
+/** Alias deste Mac como pessoa, com o suporte ligado ou desligado; null se ele nunca foi adotado. */
+const aliasDoEsteMacQualquer = (): string | null => { const s = [...load().values()].find((v) => ehEsteMac(v.code)); return s === undefined ? null : supportAlias(s.code); };
+/**
+ * "Religar o suporte" (só no este Mac): o admin desligou o próprio Mac e quer de volta; é a mesma adoção do Abrir no
+ * seletor (chave do admin no authorized_keys, pessoa ligada). Nas outras pessoas, quem religa é ela, no app dela.
+ */
+async function religarEsteMac(host: string): Promise<{ ok: boolean; detail: string }> {
+  if (host !== aliasDoEsteMacQualquer()) return { ok: false, detail: "só o este Mac religa por aqui: a pessoa liga o suporte de novo no meu-bot dela" };
+  const alias = await esteMacComoPessoa();
+  void registrar(alias, "suporte.ligar");
+  return { ok: true, detail: "o suporte deste Mac voltou" };
+}
 export function aliasDoEsteMac(): string | null {
   const s = [...load().values()].find((v) => ehEsteMac(v.code) && v.code.state === "on");
   return s === undefined ? null : supportAlias(s.code);
@@ -341,7 +371,10 @@ export async function esteMacComoPessoa(): Promise<string> {
   if (hostKey === null) throw new Error("este Mac não tem a chave ed25519 do servidor SSH");
   const code: SupportCode = { v: 1, name: ESTE_MAC.name, hostname: ESTE_MAC.hostname, user: os.userInfo().username, port: ESTE_MAC.port, hostKey, state: "on", at: new Date().toISOString(), machine: ESTE_MAC.machine };
   const m = load();
-  m.set(machineId(code), { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "" });
+  // Religar (o admin desligou o suporte e abriu "este Mac" de novo): a mesma entrada volta com o plano guardado (selo
+  // PRO do seletor) e o apelido; recriar do zero apagava os dois.
+  const antes = m.get(machineId(code));
+  m.set(machineId(code), { ...antes, code, seenAt: new Date().toISOString(), source: antes?.source ?? "colado", archived: false, nickname: antes?.nickname ?? "" });
   save(m);
   writeSshFiles(m);
   const alias = supportAlias(code);
@@ -408,15 +441,16 @@ export async function readShare(host: string): Promise<SupportShare> {
 /** Saúde da máquina da pessoa: a sondagem do seletor + (se ela deixa) o WhatsApp e o progresso nos tutoriais. */
 export async function adminHealth(host: string): Promise<AdminHealth> {
   const share = await readShare(host);
-  const [probe, wa, progress, xai, license] = await Promise.all([
+  const [probe, wa, progress, xai, license, aberturas] = await Promise.all([
     probeHost(host, getBackendPort(host)),
     share.whatsapp ? whatsappStatus(host).catch(() => null) : Promise.resolve(null),
     share.progress ? readProgress(host) : Promise.resolve(null),
     xaiAuthInfo(host).catch(() => null),
     readLicenseView(host).catch(() => null),
+    readAberturas(host),
   ]);
   if (license !== null) rememberPlan(host, license.license.plan);
-  return { probe, whatsapp: wa, progress, share, xai, license };
+  return { probe, whatsapp: wa, progress, share, xai, license, aberturas, ...(host === aliasDoEsteMac() ? { appsDoMac: await appsDoMac() } : {}) };
 }
 
 /** Licença (billing/plano) não é conteúdo pessoal: é a administração da conta, então não passa pelo compartilha.json. */
@@ -490,6 +524,12 @@ export async function removeDevice(host: string, deviceId: string): Promise<Lice
 }
 
 /** O que o meu-bot dela gravou (~/.local/share/meu-bot/progresso.json); dado de fora, validado. */
+/** As aberturas recentes do app (aberturas.jsonl do backend); null sem o arquivo. */
+async function readAberturas(host: string): Promise<Abertura[] | null> {
+  const r = await runSsh(host, `tail -n 60 "$HOME/.local/share/meu-bot/aberturas.jsonl" 2>/dev/null\n`, 20_000).catch(() => null);
+  if (r === null || r.stdout.trim() === "") return null;
+  return parseAberturas(r.stdout);
+}
 async function readProgress(host: string): Promise<SupportProgress | null> {
   const r = await runSsh(host, `head -c 16384 "$HOME/.local/share/meu-bot/progresso.json" 2>/dev/null\n`, 20_000).catch(() => null);
   if (r === null || r.stdout.trim() === "") return null;
@@ -577,6 +617,7 @@ esac` },
   transcription: { acao: "audio.ativar", sh: "" },
   "transcription-off": { acao: "audio.desativar", sh: "" },
   "support-off": { acao: "suporte.desligar-pelo-admin", sh: "" },
+  "support-on": { acao: "suporte.ligar", sh: "" },
 };
 
 /**
@@ -723,8 +764,9 @@ async function instalarBackend(host: string): Promise<{ ok: boolean; detail: str
 export async function adminAction(host: string, action: AdminAction): Promise<{ ok: boolean; detail: string }> {
   const a = ACTIONS[action];
   if (action === "support-off") return turnSupportOff(host);
+  if (action === "support-on") return religarEsteMac(host);
   // Este Mac: o backend é o dos apps; o instalador das VMs aqui subia em primeiro plano e não voltava.
-  if ((action === "install-backend" || action === "restart-backend") && host === aliasDoEsteMac()) return { ok: false, detail: "neste Mac o backend é o dos apps meu-bot: feche e abra o app" };
+  if ((action === "install-backend" || action === "restart-backend" || action === "restart-gateway") && host === aliasDoEsteMac()) return { ok: false, detail: "neste Mac o backend é o dos apps meu-bot (feche e abra o app) e o gateway do WhatsApp só existe nas máquinas" };
   if (action === "install-backend") return instalarBackend(host);
   // No registro (a pessoa vê; o super admin audita), quem fez é este admin, pelo nome do app dele.
   if (action === "transcription" || action === "transcription-off") {

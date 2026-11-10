@@ -71,7 +71,7 @@ export interface SettingsFile {
   depuracao: boolean | null;
   /** Aba fixada (📌) que fica na frente ao abrir; "padrao" até a pessoa escolher. */
   abaFixa: AbaFixa;
-  /** Controle externo (MCP): servidor em 127.0.0.1 para um cliente MCP deste Mac controlar o app. Desligado até a pessoa ligar. */
+  /** Controle externo (MCP): servidor em 127.0.0.1 para um cliente MCP deste Mac controlar o app. Instalação nova nasce ligada (settings.ts loadSettings, 10 nov 2026); arquivo existente sem a chave fica desligado. */
   mcpLigado: boolean;
   /** As ferramentas que executam comando no terminal e código nas páginas (terminal_digitar, nav_js); desligadas por padrão. */
   mcpExecucao: boolean;

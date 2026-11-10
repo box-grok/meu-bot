@@ -11,7 +11,7 @@ import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { cacheAgeText, type Cached } from "../lib/cache.js";
-import { actionResultText, dateInputToIso, deviceParts, healthLines, isoToDateInput, licenseSummary, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, ESTE_MAC_MAQUINA, ESTE_MAC_BACKEND_TEXTO, produtoLabel, type HealthLine, type AddonRotulo } from "../lib/admin-view.js";
+import { actionResultText, dateInputToIso, deviceParts, healthLines, isoToDateInput, licenseSummary, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, usoResumo, aberturaTexto, USO_VAZIO_TEXTO, ESTE_MAC_MAQUINA, ESTE_MAC_BACKEND_TEXTO, produtoLabel, type HealthLine, type AddonRotulo } from "../lib/admin-view.js";
 import type { LicensePatch, LicenseView } from "../../shared/ipc";
 
 export interface SuportePageDeps {
@@ -40,10 +40,10 @@ export interface SuportePage {
   refreshHealth(): Promise<void>;
 }
 
-interface State { /** Nomes dos MVPs registrados em Produtos (botões "＋ produto" do card de licença); lidos ao abrir. */ mvps: string[]; health: AdminHealth | null; /** Quando a saúde na tela foi lida de verdade (null = veio do cache ou ainda não leu). */ healthAt: number | null; healthErr: string | null; logs: string | null; busy: AdminAction | "health" | "logs" | null; msg: { text: string; bad: boolean } | null; /** Mudança de licença em andamento. */ licBusy: boolean; licMsg: { text: string; bad: boolean } | null }
+interface State { /** Nomes dos MVPs registrados em Produtos (botões "＋ produto" do card de licença); lidos ao abrir. */ mvps: string[]; health: AdminHealth | null; /** Quando a saúde na tela foi lida de verdade (null = veio do cache ou ainda não leu). */ healthAt: number | null; healthErr: string | null; logs: string | null; busy: AdminAction | "health" | "logs" | null; msg: { text: string; bad: boolean } | null; /** Mudança de licença em andamento. */ licBusy: boolean; licMsg: { text: string; bad: boolean } | null; /** O admin desligou o suporte nesta janela (só "Religar" no este Mac, nada nas outras). */ desligado: boolean }
 
 export function mountSuportePage(deps: SuportePageDeps): SuportePage {
-  const state: State = { mvps: [], health: null, healthAt: null, healthErr: null, logs: null, busy: null, msg: null, licBusy: false, licMsg: null };
+  const state: State = { mvps: [], health: null, healthAt: null, healthErr: null, logs: null, busy: null, msg: null, licBusy: false, licMsg: null, desligado: false };
   // A saúde da última vez aparece na hora (com a idade); a consulta real troca por baixo.
   const cachedHealth = deps.cache.read<AdminHealth>("health");
   if (cachedHealth !== null) { state.health = cachedHealth.value; state.healthAt = cachedHealth.at; deps.onWhatsapp(cachedHealth.value.whatsapp); deps.onPlan(cachedHealth.value.license?.license.plan ?? null); }
@@ -217,7 +217,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       pagTxt.rows = 3; pagTxt.maxLength = 2000; pagTxt.placeholder = "Ex.: Pix (chave e-mail) financeiro@…; valor R$ 49/mês. Depois toque em \"Já paguei\"."; pagTxt.value = pg0?.instrucoes ?? ""; pagTxt.disabled = state.licBusy;
       const pagLink = el("input") as HTMLInputElement; pagLink.type = "url"; pagLink.placeholder = "https://… (opcional)"; pagLink.value = pg0?.link ?? "";
       const pagCtl = el("div", "admin-actions");
-      const pagWrap = el("label", "admin-field"); pagWrap.append(el("span", "hint", "Como pagar (a pessoa vê no aviso de plano)"), pagTxt);
+      const pagWrap = el("label", "admin-field admin-field-linha"); pagWrap.append(el("span", "hint", "Como pagar (a pessoa vê no aviso de plano)"), pagTxt);
       pagCtl.append(
         pagWrap,
         field("Link de pagamento", pagLink),
@@ -228,6 +228,24 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       if (state.licMsg !== null) lc.append(el("p", `hint ${state.licMsg.bad ? "guide-pair-note" : "audio-ok"}`, state.licMsg.text));
     }
     panel.append(lc);
+
+    // Uso do app: qual app (produção ou staging) e qual versão abriram nesta máquina, e o histórico das aberturas.
+    if (hp !== null) {
+      const uso = el("div", "admin-card");
+      uso.append(el("strong", "", "Uso do app"));
+      const ab = hp.aberturas ?? null;
+      if (ab === null || ab.length === 0) uso.append(el("p", "hint", USO_VAZIO_TEXTO));
+      else {
+        uso.append(list(usoResumo(ab)));
+        const hist = el("details", "admin-uso-hist");
+        hist.append(el("summary", "", `Aberturas recentes (${ab.length})`));
+        const ul = el("ul", "admin-uso-lista");
+        for (const a of ab) ul.append(el("li", "", aberturaTexto(a)));
+        hist.append(ul);
+        uso.append(hist);
+      }
+      panel.append(uso);
+    }
 
     // Progresso nos tutoriais (onde a pessoa está e onde travou)
     const pg = el("div", "admin-card");
@@ -244,12 +262,12 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     a.append(el("strong", "", "Ações de suporte"));
     const acts = el("div", "admin-actions");
     const esteMac = deps.who.machine === ESTE_MAC_MAQUINA;
-    for (const o of visibleActions(hp, esteMac)) {
+    for (const o of visibleActions(hp, esteMac, state.desligado)) {
       const b = el("button", "btn btn-ghost btn-small", state.busy === o.id ? "Rodando…" : o.label); b.type = "button"; b.disabled = state.busy !== null;
       b.addEventListener("click", () => deps.armConfirm(b, o.confirm, () => {
         state.busy = o.id; state.msg = null; render();
         void deps.api.adminAction(o.id)
-          .then((r) => { state.msg = { text: actionResultText(o.label, r), bad: !r.ok }; })
+          .then((r) => { state.msg = { text: actionResultText(o.label, r), bad: !r.ok }; if (r.ok && o.id === "support-off") state.desligado = true; if (r.ok && o.id === "support-on") state.desligado = false; })
           .catch((err: unknown) => { state.msg = { text: ipcErrorText(err), bad: true }; })
           .finally(() => { state.busy = null; void refreshHealth(); if (logsOpen) void refreshLogs(); });
       }));
