@@ -8,6 +8,29 @@ description: Leva uma mudança do meu-bot (app, financeiro, CRM, backend) do des
 Como o Brave (Sparkle) e o Cursor: o app baixa a versão nova sozinho, só instala o que a chave da release assinou e o
 usuário só reinicia. Detalhes em `docs/guia/app.md`, seção "Revisão no molde do Brave/Sparkle".
 
+## Caminho normal: automático depois do merge
+
+O agente do launchd `scripts/release-auto.mjs` (rótulo `com.meu-bot.release-auto`, a cada 10 min, log em
+`~/Library/Logs/meu-bot-release.log`) faz a sequência abaixo sozinho, no worktree fixo `../meu-bot-release`:
+
+1. **Staging**: 10 min depois do último merge no `main` (junta merges seguidos), `npm test` + `npm run release:staging`.
+   O macOS pede a chave da release no Chaveiro: é o único clique. Negou ou ninguém viu: tenta de novo em 1 h.
+2. **Saúde**: o `meu-bot-staging` deste Mac (vindo da release) precisa receber a versão pelo atualizador e confirmá-la
+   (`[atualização] <v> confirmada` no log; `node scripts/release-saude.mjs <v>`). Se ele estiver fechado, o agente o
+   abre escondido. Se a versão voltou para a anterior, nada é promovido e o Mac avisa.
+3. **Estável**: 24 h depois do staging, saudável e ainda no HEAD do `main` → `npm run release` no mesmo commit, e
+   o deploy do site se `conta-api/` mudou desde a estável anterior. Merge novo no meio solta um staging novo e
+   recomeça as 24 h.
+4. **Base**: PR "Versão: base sobe para X" (`package.json` + "Ainda não lançado" vira a seção datada), mergeado sozinho.
+
+- Ver a decisão da vez: `node scripts/release-auto.mjs --check`.
+- Instalar o agente (e trocar os staging locais pelos da release): `node scripts/release-auto.mjs --instalar`;
+  tirar: `--desinstalar`.
+- O PR garante o que a release exige: o CI roda `scripts/release-checar.mjs` (componente sem versão nova falha) e avisa
+  quando o app muda sem item no CHANGELOG.
+
+O caminho manual abaixo segue valendo para emergência (agente parado, release fora de hora, chave de reserva).
+
 ## Onde publicar
 
 As releases saem do Mac que tem o `gh` logado como **diegofornalha** (`gh auth status`; o `box-grok` recebe 403 ao

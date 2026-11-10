@@ -385,6 +385,16 @@ meu-bot é assinado ad-hoc, então o `autoUpdater` do Electron (Squirrel) não s
   sair do app (`will-quit`): a próxima abertura já é a nova. Canais comuns (`update:state`, `update:apply`).
 - A versão do meu-bot de cada pessoa aparece para o admin na saúde da máquina (abaixo).
 
+### Release automática depois do merge (10 nov 2026)
+
+`scripts/release-auto.mjs`, um agente do launchd neste Mac (a chave da release está no Chaveiro daqui, e `build/suporte`
+e os clients do Google ficam fora do git: GitHub Actions não serve). A cada 10 min ele olha o `origin/main` e decide
+uma coisa (`decideRodada`, `scripts/release-core.mjs`): staging 10 min depois do último merge; estável 24 h depois, se
+o `meu-bot-staging` deste Mac recebeu a versão pelo atualizador e a confirmou (`saudeStaging`); e o PR da base nova
+depois da estável. Os dois staging deste Mac deixaram de ser builds locais (`rebuild-auto.sh` não os empacota mais),
+porque um build local sai com a versão sem sufixo e nunca recebe a `-staging.N`. O CI (`scripts/release-checar.mjs`)
+recusa já no PR o componente da máquina que mudou sem subir a versão. Detalhes na skill `publicar`.
+
 ### Revisão no molde do Brave/Sparkle (22 out 2026)
 
 REA do Brave 155→156 (Sparkle: `SUPublicEDKey`, delta baixado em `~/Library/Caches/…/PersistentDownloads`) e do
