@@ -51,14 +51,17 @@ test("hermesNaVersao", () => {
   assert.equal(c.hermesNaVersao(""), false);
 });
 
-test("ehProxyXaiOrfao: só o proxy da xAI do Hermes da pasta do meu-bot, nesta porta", () => {
-  const prefix = "/Users/x/.local/share/meu-bot/hermes";
-  const nosso = `${prefix}/lib/node_modules/hermes-agent/runtime/hermes-agent/venv/bin/python3 ${prefix}/lib/node_modules/hermes-agent/runtime/hermes-agent/venv/bin/hermes proxy start --provider xai --host 127.0.0.1 --port 8691`;
-  assert.equal(c.ehProxyXaiOrfao(nosso, prefix, 8691), true);
-  assert.equal(c.ehProxyXaiOrfao(nosso, `${prefix}/`, 8691), true);
-  assert.equal(c.ehProxyXaiOrfao(nosso, prefix, 8690), false, "outra porta (outro app)");
-  assert.equal(c.ehProxyXaiOrfao(nosso.replace("8691", "86910"), prefix, 8691), false);
-  assert.equal(c.ehProxyXaiOrfao("/Users/x/.local/bin/hermes proxy start --provider xai --port 8691", prefix, 8691), false, "Hermes da pessoa");
-  assert.equal(c.ehProxyXaiOrfao(`${prefix}/bin/hermes gateway run`, prefix, 8691), false);
-  assert.equal(c.ehProxyXaiOrfao("", prefix, 8691), false);
+test("ehNossoProxyOrfao: só o proxy do Hermes do meu-bot na porta deste app", () => {
+  const pre = "/Users/box/.local/share/meu-bot/hermes";
+  const py = `${pre}/lib/node_modules/hermes-agent/runtime/hermes-agent/venv/bin/python3 ${pre}/lib/node_modules/hermes-agent/runtime/hermes-agent/venv/bin/hermes proxy start --provider xai --host 127.0.0.1 --port 8691`;
+  assert.equal(c.ehNossoProxyOrfao(py, pre, 8691), true);
+  assert.equal(c.ehNossoProxyOrfao(py + "\n", pre + "/", 8691), true);
+  // Outro app (outra porta), outro Hermes (o da pessoa), outro subcomando, porta parecida: intocados.
+  assert.equal(c.ehNossoProxyOrfao(py, pre, 8690), false);
+  assert.equal(c.ehNossoProxyOrfao(py.replace(/--port 8691/, "--port 86910"), pre, 8691), false);
+  assert.equal(c.ehNossoProxyOrfao("/opt/homebrew/bin/hermes proxy start --provider xai --port 8691", pre, 8691), false);
+  assert.equal(c.ehNossoProxyOrfao(`${pre}/bin/hermes auth add xai-oauth --port 8691`, pre, 8691), false);
+  assert.equal(c.ehNossoProxyOrfao(`${pre}-velho/bin/hermes proxy start --port 8691`, pre, 8691), false);
+  assert.equal(c.ehNossoProxyOrfao("", pre, 8691), false);
+  assert.equal(c.ehNossoProxyOrfao(py, "", 8691), false);
 });
