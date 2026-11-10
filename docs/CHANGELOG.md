@@ -16,6 +16,10 @@ no [diário técnico](GUIA.md).
 #### Corrigido
 - Depois de fechar o app (ou de ele se atualizar), o Grok do "Este Mac" podia ficar preso num proxy da abertura anterior, e o app tentava subir outro a cada 15 s sem conseguir ("address already in use" no `xai-proxy.log`). Agora o app encerra o proxy inteiro ao fechar, e ao abrir encerra sozinho um que tenha sobrado.
 
+---
+
+## 10 de novembro de 2026 · v0.80.0
+
 ### "Este Mac": Grok, WhatsApp e áudios
 #### Novo
 - **Grok (xAI) na janela "Este Mac"**: o tutorial 4 aparece também aqui. O app instala o proxy do Grok numa pasta própria, sem mexer num Hermes que você já tenha, e a página da xAI abre para você entrar.
