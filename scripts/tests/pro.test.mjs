@@ -11,7 +11,10 @@ test("browserAccess: pro ativo abre; free e vencido bloqueiam; este Mac e backen
   assert.equal(browserAccess(lic({ plan: "pro", status: "expired" }), "agente-box"), "expired");
   assert.equal(browserAccess(lic({ plan: "pro", status: "active", expiresAt: "2020-01-01T00:00:00Z" }), "agente-box"), "expired", "expiresAt no passado vence mesmo com status active");
   assert.equal(browserAccess(null, "agente-box"), "unknown");
-  assert.equal(browserAccess(lic({ plan: "pro", status: "active" }), "local"), "unknown");
+  // Este Mac: o main manda a licença da conta meu-bot; com ela Pro, o Navegador abre; sem conta (null), não.
+  assert.equal(browserAccess(lic({ plan: "pro", status: "active" }), "local"), "ok");
+  assert.equal(browserAccess(lic({}), "local"), "free");
+  assert.equal(browserAccess(null, "local"), "unknown");
 });
 
 test("planoLiberaPro: só o pro", () => {
