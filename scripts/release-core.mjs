@@ -78,6 +78,23 @@ export function notasDaRelease(changelog) {
   return texto === "" ? null : texto;
 }
 
+/**
+ * `npm run release -- --conferir` (skill aprovar-estavel, fase 2): o que ainda impede ou empobrece esta release, depois
+ * das recusas que o release.mjs já faz no começo (árvore, gh, tag, promoção, chave, componentes). `erros` param;
+ * `avisos` deixam sair. `existe(caminho)` é o existsSync (injetado para o teste).
+ */
+export function faltasParaPublicar({ produtos, existe, notas }) {
+  const erros = [];
+  const avisos = [];
+  if (produtos.length === 0) erros.push("nenhum produto neste canal");
+  const temAdmin = produtos.some((p) => p.caps?.supportAdmin === true);
+  if (temAdmin && !existe("build/suporte/admins.json") && !existe("build/suporte/suporte.json")) {
+    erros.push("falta build/suporte/ (o meu-bot-admin sairia sem o suporte.json): copie do checkout principal ou rode scripts/suporte-setup.mjs");
+  }
+  if (notas === null) avisos.push('docs/CHANGELOG.md sem "Ainda não lançado" com conteúdo: a release sairia com a lista de commits do GitHub');
+  return { erros, avisos };
+}
+
 // ── Release automática (scripts/release-auto.mjs): o que fazer em cada rodada do agente deste Mac ──────────────────
 
 /** Espera depois do último merge antes de soltar o staging: junta merges seguidos numa release só. */

@@ -2,6 +2,7 @@
 // atualização automática (src/main/atualizacao/updater.ts) baixa. Dois modos (regras em release-core.mjs):
 //   npm run release:staging  → pre-release v<versão>-staging.N com os apps staging (meu-bot-staging, meu-bot-finance-staging);
 //                              N = próximo pelas tags que já existem. Os staging instalados atualizam sozinhos.
+//   npm run release -- --conferir (ou release:staging -- --conferir) → só confere tudo, sem empacotar nem publicar.
 //   npm run release          → promoção: release v<versão> com os estáveis (meu-bot, meu-bot-admin), SÓ
 //                              num commit que já tem a tag v<versão>-staging.N (o staging aprovado); senão sai com 64.
 // <versão> é a do package.json (a próxima estável; "meu-bot 2.0" = `npm version 2.0.0 --no-git-tag-version`). Exige
@@ -22,9 +23,11 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { CHAVE_RELEASE_ANTIGA, lerChaveArquivo, lerChavePrincipal } from "./chave-release.mjs";
 import { componentesPendentes } from "./release-checar.mjs";
-import { clientesGoogleParaPublicar, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
+import { clientesGoogleParaPublicar, faltasParaPublicar, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
 
 const staging = process.argv.includes("--staging");
+// `--conferir`: roda todas as recusas e conferências e sai antes de empacotar, sem tag nem release (skill aprovar-estavel).
+const conferir = process.argv.includes("--conferir");
 const base = JSON.parse(readFileSync("package.json", "utf8")).version;
 if (!/^\d+\.\d+\.\d+$/.test(base)) { console.error(`✗ a versão do package.json (${base}) precisa ser x.y.z: ela é a próxima estável`); process.exit(64); }
 const tags = execSync("git tag -l", { encoding: "utf8" }).split("\n");
@@ -71,6 +74,18 @@ step("conferindo as versões dos componentes da máquina");
   else console.log(`  ok desde ${ultima}`);
 }
 const { PRODUTOS } = await import("./produtos.mjs");
+if (conferir) {
+  const produtos = produtosDoCanal(PRODUTOS, staging ? "staging" : "estavel");
+  const notasConferidas = notasDaRelease(existsSync("docs/CHANGELOG.md") ? readFileSync("docs/CHANGELOG.md", "utf8") : null);
+  const { erros, avisos } = faltasParaPublicar({ produtos, existe: existsSync, notas: notasConferidas });
+  const commit = execSync("git log -1 --format=%h", { encoding: "utf8" }).trim();
+  for (const e of erros) console.error(`✗ ${e}`);
+  for (const a of avisos) console.log(`⚠ ${a}`);
+  if (erros.length > 0) process.exit(64);
+  const itens = notasConferidas === null ? 0 : notasConferidas.split("\n").filter((l) => l.startsWith("- ")).length;
+  console.log(`\n✓ conferido: ${tag} pode sair do commit ${commit} com ${produtos.map((p) => p.nome).join(", ")} (${itens} itens nas notas). Nada foi publicado.`);
+  process.exit(0);
+}
 const zips = [];
 for (const p of produtosDoCanal(PRODUTOS, staging ? "staging" : "estavel")) {
   const name = p.nome;
