@@ -14,6 +14,7 @@ import { audioMarcaSh } from "../whatsapp/transcritor-core";
 import { hermesPausaPluginSh, lerPausaPlugin, versaoDoPluginYaml, type PausaPluginFonte } from "../whatsapp/whatsapp-hermes-pausa-core";
 import { HERMES_PIPER_VOICE, HERMES_RESTART_SH, HERMES_VENV_PY_SH, HERMES_VOZ_LOCAL_SH, hermesAudioPatch, hermesConfigSetSh, hermesPmExtraSh, hermesSttLigarSh } from "../whatsapp/whatsapp-hermes-core";
 import { sshHostInfo } from "./sshConfig";
+import { scriptLocal } from "../whatsapp/whatsapp-local-core";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -348,10 +349,25 @@ export async function installClaudeGlobal(host: string): Promise<{ ok: boolean; 
   return { ok: true, porta: Number(ok[1]), login: /^LOGIN=1$/m.test(r.stdout), email, erro: null };
 }
 
+/**
+ * Áudio na máquina "local" (este Mac, OpenClaw): a transcrição é o mesmo install-transcricao.sh, rodado aqui em bash com
+ * o prelúdio do Mac (PATH com ~/.local e o Homebrew). Sem o transcritor compartilhado do admin (/opt/transcriber), ele
+ * cria o faster-whisper em ~/.local/share/meu-bot/transcricao e decodifica pelo ffmpeg; sem ffmpeg, o Homebrew instala.
+ * A voz (responder em áudio) ainda é só das máquinas por SSH.
+ */
+async function installAudioLocal(setup: AudioSetup, say: (l: string) => void, lines: string[]): Promise<InstallBackendResult> {
+  if (setup.kind !== "in") return { ok: false, log: [...lines, "responder em áudio ainda não vale neste Mac; a transcrição (ouvir áudios) sim"] };
+  const brewFfmpeg = 'command -v ffmpeg >/dev/null 2>&1 || { command -v brew >/dev/null 2>&1 && { echo "instalando o ffmpeg pelo Homebrew (só na primeira vez)…"; brew install ffmpeg >/dev/null 2>&1 || true; }; }';
+  const script = scriptLocal(`${audioMarcaSh(setup.off === true)}\n${setup.off === true ? "" : `${brewFfmpeg}\n`}bash '${path.join(backendBundleDir(), "install-transcricao.sh")}'${setup.off === true ? " off" : ""} 2>&1\n`);
+  const inst = await run("/bin/bash", ["-c", script], 20 * 60_000, say);
+  if (inst.code !== 0) return { ok: false, codigo: inst.code, log: [...lines, lines.at(-1) ?? `instalador saiu com código ${inst.code ?? "timeout"}`] };
+  return { ok: true, codigo: 0, log: lines };
+}
+
 export async function installAudio(host: string, setup: AudioSetup, onLine?: (line: string) => void): Promise<InstallBackendResult> {
   const lines: string[] = [];
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
-  if (host === LOCAL_HOST) return { ok: false, log: ["o áudio do agente do WhatsApp ainda não vale neste Mac (só nas máquinas por SSH)"] };
+  if (host === LOCAL_HOST) return installAudioLocal(setup, say, lines);
   const gw = await run("ssh", [...sshBase(host), "--", host, `${WA_MOTOR_SH}; usa_hermes && echo hermes || echo outro`], 30_000);
   if (/^hermes$/m.test(gw.stdout)) {
     const ligarStt = setup.kind === "in" && setup.off !== true;

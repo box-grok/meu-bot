@@ -12,6 +12,12 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### "Este Mac": Grok, WhatsApp e áudios
+#### Novo
+- **Grok (xAI) na janela "Este Mac"**: o tutorial 4 aparece também aqui. O app instala o proxy do Grok numa pasta própria, sem mexer num Hermes que você já tenha, e a página da xAI abre para você entrar.
+- **WhatsApp na janela "Este Mac"**, pelo OpenClaw: o tutorial 3 instala o agente com um serviço do Mac (ele responde mesmo com o meu-bot fechado, enquanto o Mac estiver ligado), mostra o QR e conecta o número. O passo concluído diz qual agente ficou ("Agente: OpenClaw").
+- **Ouvir áudios neste Mac**: "Ativar transcrição" passa a valer aqui; os áudios do WhatsApp viram texto no próprio Mac, sem sair dele. Responder em áudio continua só nas máquinas.
+
 ### Atualização: "Este Mac" volta funcionando depois de reiniciar na versão nova
 #### Corrigido
 - Depois de atualizar com a janela "Este Mac" aberta, o app reabria com "túnel instável: a porta já está em uso" e as conversas deste Mac não respondiam: o backend da versão anterior continuava rodando. Agora ele é encerrado antes da troca, e o app reaberto encerra sozinho um que tenha sobrado.
