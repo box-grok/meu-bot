@@ -141,7 +141,8 @@ function _looksLikeLoggedOut(text) {
   if (!t || t.length > 400) return false;
   return /not logged in/i.test(t)
     || /please run \/?login/i.test(t)
-    || /^please run \/?login/i.test(t);
+    || /^please run \/?login/i.test(t)
+    || /failed to authenticate|oauth (session|token) (has )?expired|could not be refreshed/i.test(t);
 }
 
 function _failAuth(res, message) {

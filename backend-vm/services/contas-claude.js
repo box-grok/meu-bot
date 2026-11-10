@@ -439,4 +439,15 @@ function abrir(opts = {}) {
   return { conta, configDir, logada, emailDe, ambiente, lerGlobal, usoEfetivo, registrarUso, marcar, usarAgora, desbloquear, escolher, proximaDisponivelEm, criar, atualizar, reordenar, remover, conferir, limiares, definirLimiares, listar, vista, resumo, provisionar, registrarEvento, eventos, PASTA, REGISTRO, USO, EVENTOS, GLOBAL };
 }
 
-module.exports = { abrir, analisarRateLimit, servicoKeychain, LIMIARES_PADRAO, ESTRATEGIAS, DIRS_COMPARTILHADOS, ESGOTADA_PADRAO_S };
+/**
+ * A CLI recusou o login da conta (deslogada, token vencido que não renovou, OAuth inválido)? Vale para o texto da
+ * resposta e para o stderr. O "Failed to authenticate: OAuth session expired and could not be refreshed" (10 nov 2026)
+ * passava como cli_failed comum: a conta vencida seguia primeira da fila e o chat parava, com outra conta logada.
+ */
+function pareceDeslogado(texto) {
+  const t = String(texto || '');
+  return /^\s*not logged in/i.test(t) || /please run \/?login/i.test(t)
+    || /authentication_failed|failed to authenticate|invalid.*(oauth|token)|login expired|oauth (session|token) (has )?expired|could not be refreshed/i.test(t);
+}
+
+module.exports = { abrir, analisarRateLimit, pareceDeslogado, servicoKeychain, LIMIARES_PADRAO, ESTRATEGIAS, DIRS_COMPARTILHADOS, ESGOTADA_PADRAO_S };
