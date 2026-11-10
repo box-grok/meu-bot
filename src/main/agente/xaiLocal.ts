@@ -4,15 +4,16 @@
  * num `hermes` que a pessoa já tenha), o proxy da xAI é um processo filho do app, ao lado do backend local, e o
  * providers.json do backend local aponta o grok-4 para ele. A credencial fica em ~/.hermes, como em qualquer Hermes.
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { app, shell } from "electron";
 import type { ClaudeAuthInfo, ClaudeLoginEvent, InstallBackendResult } from "../../shared/ipc";
+import { pidsDoLsof } from "../maquina/backend-local-orfao-core";
 import { ensureLocalBackend, findNode, localBackendAlive, localBackendDir, localBackendPort, stopLocalBackend } from "../maquina/localBackend";
-import { HERMES_VERSION_LOCAL, hermesNaVersao, providersApontaProxy, providersComGrokLocal, proxyPortaLocal, rotuloCredencialXai, statusXaiLogado } from "./xaiLocal-core";
+import { ehProxyXaiOrfao, HERMES_VERSION_LOCAL, hermesNaVersao, providersApontaProxy, providersComGrokLocal, proxyPortaLocal, rotuloCredencialXai, statusXaiLogado } from "./xaiLocal-core";
 
 const HOME = os.homedir();
 const PREFIX = path.join(HOME, ".local", "share", "meu-bot", "hermes");
@@ -70,8 +71,34 @@ let proxy: ChildProcess | null = null;
 let proxyQuer = false;
 let proxyRetry: NodeJS.Timeout | null = null;
 
+/**
+ * Um proxy nosso de uma abertura anterior (app fechado à força, troca de versão antiga) segura a porta: o novo saía
+ * com código 1 a cada 15 s. Encerra o órfão (só o nosso: Hermes da pasta do meu-bot, `proxy start` nesta porta).
+ */
+function encerrarProxyOrfao(p: number): boolean {
+  const l = spawnSync("lsof", ["-nP", `-iTCP:${p}`, "-sTCP:LISTEN", "-t"], { encoding: "utf8", timeout: 5000 });
+  const proprio = proxy?.pid;
+  let encerrou = false;
+  for (const pid of pidsDoLsof(l.stdout ?? "", process.pid)) {
+    if (pid === proprio) continue;
+    const ps = spawnSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 5000 });
+    if (!ehProxyXaiOrfao(ps.stdout ?? "", PREFIX, p)) continue;
+    try { process.kill(pid, "SIGTERM"); encerrou = true; log(`proxy órfão de uma abertura anterior (pid ${pid}) segurava a porta ${p}: encerrado`); } catch { /* já saiu */ }
+  }
+  return encerrou;
+}
+
+function agendarProxy(ms: number): void {
+  if (proxyRetry !== null) return; // um ciclo só: o reinício (stop + ensure) não deixa um segundo correndo
+  proxyRetry = setTimeout(() => { proxyRetry = null; subirProxy(); }, ms);
+  proxyRetry.unref();
+}
+
 function subirProxy(): void {
   if (!proxyQuer || proxy !== null) return;
+  // A porta ocupada por um órfão nosso: encerra e tenta logo depois (a porta leva um instante para soltar). Outro
+  // programa na porta: segue como antes (o proxy sai e o retry de 15 s registra no log).
+  if (encerrarProxyOrfao(porta())) { agendarProxy(1500); return; }
   const fd = fs.openSync(path.join(app.getPath("userData"), "xai-proxy.log"), "a");
   const child = spawn(HERMES, ["proxy", "start", "--provider", "xai", "--host", "127.0.0.1", "--port", String(porta())], { stdio: ["ignore", fd, fd], env: envHermes() });
   fs.closeSync(fd);
@@ -79,11 +106,12 @@ function subirProxy(): void {
   const ini = Date.now();
   child.on("error", (e) => log(`proxy não iniciou: ${e.message}`));
   child.on("exit", (code, signal) => {
-    if (proxy === child) proxy = null;
+    // Um filho que já foi substituído (stop + ensure) não agenda nada: senão ficavam dois ciclos de retry.
+    if (proxy !== child) return;
+    proxy = null;
     if (!proxyQuer) return;
     log(`proxy saiu após ${Date.now() - ini} ms (code=${code} signal=${signal}); de novo em 15 s`);
-    proxyRetry = setTimeout(() => { proxyRetry = null; subirProxy(); }, 15_000);
-    proxyRetry.unref();
+    agendarProxy(15_000);
   });
 }
 

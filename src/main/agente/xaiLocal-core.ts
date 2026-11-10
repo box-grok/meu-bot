@@ -54,3 +54,15 @@ export function rotuloCredencialXai(list: string): string | null {
 
 /** `hermes --version` é da versão pedida? */
 export const hermesNaVersao = (versionOut: string, versao: string = HERMES_VERSION_LOCAL): boolean => versionOut.includes(`v${versao}`);
+
+/**
+ * O processo na porta do proxy é um proxy da xAI NOSSO, de uma abertura anterior (órfão)? O comando roda o Hermes da
+ * pasta do meu-bot (o caminho real fica dentro de `prefix`) com `proxy start` nesta porta. Um Hermes da pessoa, ou
+ * qualquer outro programa na porta, fica intocado.
+ */
+export function ehProxyXaiOrfao(comando: string, prefix: string, porta: number): boolean {
+  const c = comando.trim();
+  if (c === "" || prefix === "") return false;
+  const base = prefix.endsWith("/") ? prefix : `${prefix}/`;
+  return c.includes(base) && /\bproxy start\b/.test(c) && /--provider xai\b/.test(c) && new RegExp(`--port ${porta}(\\s|$)`).test(c);
+}

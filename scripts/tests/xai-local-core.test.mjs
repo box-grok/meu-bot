@@ -50,3 +50,15 @@ test("hermesNaVersao", () => {
   assert.equal(c.hermesNaVersao("Hermes Agent v0.21.0"), false);
   assert.equal(c.hermesNaVersao(""), false);
 });
+
+test("ehProxyXaiOrfao: só o proxy da xAI do Hermes da pasta do meu-bot, nesta porta", () => {
+  const prefix = "/Users/x/.local/share/meu-bot/hermes";
+  const nosso = `${prefix}/lib/node_modules/hermes-agent/runtime/hermes-agent/venv/bin/python3 ${prefix}/lib/node_modules/hermes-agent/runtime/hermes-agent/venv/bin/hermes proxy start --provider xai --host 127.0.0.1 --port 8691`;
+  assert.equal(c.ehProxyXaiOrfao(nosso, prefix, 8691), true);
+  assert.equal(c.ehProxyXaiOrfao(nosso, `${prefix}/`, 8691), true);
+  assert.equal(c.ehProxyXaiOrfao(nosso, prefix, 8690), false, "outra porta (outro app)");
+  assert.equal(c.ehProxyXaiOrfao(nosso.replace("8691", "86910"), prefix, 8691), false);
+  assert.equal(c.ehProxyXaiOrfao("/Users/x/.local/bin/hermes proxy start --provider xai --port 8691", prefix, 8691), false, "Hermes da pessoa");
+  assert.equal(c.ehProxyXaiOrfao(`${prefix}/bin/hermes gateway run`, prefix, 8691), false);
+  assert.equal(c.ehProxyXaiOrfao("", prefix, 8691), false);
+});
