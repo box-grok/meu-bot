@@ -10,6 +10,7 @@ import { buildLicenseView, type LicencaDaMaquina } from "./licenca";
 import { LOCAL_HOST } from "../maquina/localBackend";
 import { isValidHost } from "../app/settings";
 import { runSsh } from "../whatsapp/whatsapp";
+import { contaView } from "../conta/conta";
 
 export const LICENSE_PATH = "$HOME/.local/share/meu-bot/licenca.json";
 export const MACHINES_PATH = "$HOME/.local/share/meu-bot/maquinas.json";
@@ -31,10 +32,18 @@ export async function readLicenseViewSsh(host: string): Promise<LicenseView | nu
  * mora no nosso backend, e licença lida por SSH não prova que ele existe na máquina.
  */
 export async function lerLicencaDaMaquina(host: string): Promise<LicencaDaMaquina> {
+  // Este Mac: o plano é o da conta meu-bot (veio da API da conta, com sessão), nunca o licenca.json local, que o
+  // dono do Mac edita à mão. Sem conta, sem plano. viaBackend fica false: o CRM e o financeiro seguem só nas máquinas.
+  if (host === LOCAL_HOST) return { view: licencaDaConta(), viaBackend: false };
   const pelaApi = await fetchLicense(host);
   if (pelaApi !== null) return { view: pelaApi, viaBackend: true };
   if (host === LOCAL_HOST || !isValidHost(host)) return { view: null, viaBackend: false };
   return { view: await readLicenseViewSsh(host), viaBackend: false };
+}
+/** A licença da conta meu-bot deste Mac como LicenseView (sem a lista de devices: ela é da máquina); null sem conta. */
+export function licencaDaConta(): LicenseView | null {
+  const c = contaView().conta;
+  return c === null ? null : buildLicenseView(c.licenca, null);
 }
 /** Só a vista da licença (telas e gates que não dependem do backend). */
 export async function lerLicenca(host: string): Promise<LicenseView | null> { return (await lerLicencaDaMaquina(host)).view; }

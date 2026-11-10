@@ -12,7 +12,8 @@ import { caps } from "../app/variant";
 
 export async function assertAcesso(host: string): Promise<void> {
   const exige = caps().planoExigido;
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error(exige === "free" ? "PRO_REQUIRED" : "ASSINATURA_REQUIRED");
+  // Este Mac entra: a licença dele é a da conta meu-bot (lerLicenca → licencaDaConta).
+  if (!isValidHost(host)) throw new Error(exige === "free" ? "PRO_REQUIRED" : "ASSINATURA_REQUIRED");
   const lic = await lerLicenca(host);
   if (exige !== "free") {
     // Backend antigo/fora do ar ("unknown") não é bloqueio do admin: deixa passar; o backend da máquina recusa se for o caso.

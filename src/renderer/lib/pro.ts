@@ -4,7 +4,8 @@
  * - "ok": plano pro em vigor;
  * - "free": plano grátis → a aba abre bloqueada, com "Pedir o Pro ao admin";
  * - "expired": tinha o plano e venceu → bloqueada, com a data;
- * - "unknown": este Mac ou backend antigo/fora do ar (sem licença para ler) → bloqueada, "atualize o backend".
+ * - "unknown": backend antigo/fora do ar, ou este Mac sem conta (sem licença para ler) → bloqueada. Este Mac usa o
+ *   plano da conta meu-bot (o main manda a licença da conta, nunca o arquivo local).
  * App que exigisse mais que o free (`exige !== "free"`): sem etiqueta Pro; ou está tudo aberto ("ok") ou o add-on
  * `produto` falta/venceu ("assinatura"), uma tela só. Mesmas regras do src/main/licenca.ts (lado do main).
  */
@@ -47,7 +48,7 @@ export const financeOk = (view: LicenseView | null, host: string, now: number = 
 
 export function browserAccess(view: LicenseView | null, host: string, exige: PlanName = "free", produto: string = "meu-bot", now: number = Date.now()): ProAccess {
   if (exige !== "free") { const a = acessoProduto(view, host, exige, produto, now); return a === "ok" ? "ok" : a === "unknown" ? "unknown" : "assinatura"; }
-  if (host === "local" || view === null) return "unknown";
+  if (view === null) return "unknown";
   const l = view.license;
   if (!planoLiberaPro(l.plan)) return "free";
   if (vencida(l, now)) return "expired";

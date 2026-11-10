@@ -4,7 +4,7 @@ import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { montarMenuConta } from "./lib/conta-menu.js";
 import { resumoPlano } from "./lib/conta-resumo.js";
-import { maquinasParaAdotar, personSuffix } from "./lib/admin-view.js";
+import { ESTE_MAC_MAQUINA, maquinasParaAdotar, personSuffix } from "./lib/admin-view.js";
 import { mountAdminPickerChrome } from "./admin/picker-chrome.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
 import { describeProbe, enderecoLabel, hostLabel, setApelidoMaquina, setHostNicknames, type ProbeText } from "./lib/probe-text.js";
@@ -355,7 +355,12 @@ async function probe(host: string, force = false): Promise<void> {
   paintState(host);
   try {
     const p: HostProbe = await window.picker.probe(host);
-    const t = describeProbe(p);
+    // "este Mac" no admin (o Mac do próprio admin como pessoa): o backend é o dos apps meu-bot, não o das VMs que a
+    // sondagem procura; o "sem o backend do meu-bot" seria falso. Entrou por SSH: está tudo certo para o suporte.
+    const t0 = describeProbe(p);
+    const t = personOf(host)?.machine === ESTE_MAC_MAQUINA && p.reachable
+      ? { ...t0, kind: "ok" as const, text: `✓ este Mac · entra por SSH · ${p.claudeLoggedIn ? "Claude Code logado" : "Claude Code deslogado"} · o backend é o de cada app meu-bot (sobe quando o app abre)`, canOpen: true }
+      : t0;
     // O backend desta conta está em outra porta (outra conta da máquina tem a do app): a sondagem leu a porta no
     // .env do próprio backend, então é a certa. Grava só para esta máquina e sonda de novo, sem pedir o clique.
     if (t.install === "porta" && t.port !== undefined && !portaAdotada.has(host)) {
