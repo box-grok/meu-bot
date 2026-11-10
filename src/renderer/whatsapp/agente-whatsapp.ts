@@ -424,6 +424,7 @@ function paintWaPolicy(): void {
  * para o WhatsApp; o pareamento (QR) fica com o app. Idempotente por instrução: pular o que já está feito.
  */
 function waAgentPrompt(st: WhatsappStatus): string {
+  if (ctx.windowHost === "local" && st.gateway !== "hermes") return waAgentPromptMac(st);
   if (st.gateway === "hermes") {
     return [
       "Prepare o Hermes desta máquina para o WhatsApp, sem interação e sem parear (o QR eu faço pelo meu-bot).",
@@ -452,6 +453,26 @@ function waAgentPrompt(st: WhatsappStatus): string {
   ].join("\n");
 }
 
+/**
+ * O mesmo pedido para a máquina "local" (este Mac): sem root e sem systemd. O OpenClaw vai para ~/.local com o Node
+ * deste Mac (o OpenClaw aceita Node 24.16+ ou 26.1+) e o gateway vira serviço do launchd (`--install-daemon` no macOS).
+ */
+function waAgentPromptMac(st: WhatsappStatus): string {
+  return [
+    "Prepare o OpenClaw deste Mac para o WhatsApp, sem interação e sem parear (o QR eu faço pelo meu-bot).",
+    "Encontrado: " + st.agent + ".",
+    "Falta:\n" + (st.missing ?? "?").split("\n").map((l) => "- " + l).join("\n"),
+    "",
+    "Passos (pule o que já estiver feito):",
+    "0. Se `openclaw` não existir (confira com `command -v openclaw`): `npm install -g --prefix ~/.local openclaw@2026.9.9` (a versão que o meu-bot usa; não use `latest`, nem sudo). Ele exige Node 24.16+ ou 26.1+: confira `node --version`; se o Node deste Mac não servir, me diga em vez de trocá-lo. Confira `~/.local/bin/openclaw --version`.",
+    "1. Se não houver ~/.openclaw/openclaw.json: `openclaw onboard --non-interactive --accept-risk --auth-choice anthropic-cli --skip-channels --skip-skills --skip-hooks --skip-search --skip-ui --install-daemon --gateway-bind loopback --gateway-auth token --gateway-token \"$(openssl rand -hex 24)\" --json`. No macOS o `--install-daemon` cria o serviço do launchd. Se o anthropic-cli não servir, me diga o que falta em vez de inventar chave.",
+    "2. Plugin, na versão do OpenClaw: `openclaw plugins install clawhub:@openclaw/whatsapp@2026.9.9 --accept-capabilities`.",
+    "3. Confira com `openclaw gateway status` (deve estar rodando pelo launchd) e `openclaw plugins list | grep -i whatsapp`.",
+    "",
+    "No fim, resuma o que fez e o que ainda falta. Não rode `openclaw channels login`; não pareie o WhatsApp.",
+  ].join("\n");
+}
+
 /** Os dois agentes que atendem o WhatsApp, como a pessoa os vê (o app trabalha igual com os dois). */
 const AGENTE_OPTIONS: readonly { id: WhatsappAgente; title: string; text: string; recomendado: boolean }[] = [
   { id: "openclaw", title: "OpenClaw", text: "Responde pelo Claude Code desta máquina. É o mais usado com o meu-bot.", recomendado: true },
@@ -474,14 +495,16 @@ export function renderAgentChoice(container: HTMLElement): void {
   for (const o of AGENTE_OPTIONS) {
     const saving = waAgenteSaving === o.id;
     const card = el("button", `reply-card${marcado === o.id ? " on" : ""}${saving ? " saving" : ""}`);
-    card.type = "button"; card.disabled = waAgenteSaving !== null || waPairing;
+    // No Mac (máquina "local") o WhatsApp é só pelo OpenClaw por enquanto: o gateway do Hermes depende de systemd/pm2.
+    const soNasMaquinas = ctx.windowHost === "local" && o.id === "hermes";
+    card.type = "button"; card.disabled = waAgenteSaving !== null || waPairing || soNasMaquinas;
     card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(marcado === o.id));
     const title = el("div", "reply-title"); title.append(el("strong", "", o.title));
     if (o.recomendado) title.append(el("span", "reply-default", "Recomendado"));
     if (saving) title.append(el("span", "reply-saving", "aplicando…"));
-    const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
+    const body = el("div", "reply-body"); body.append(title, el("p", "", soNasMaquinas ? "Neste Mac, por enquanto, só o OpenClaw; o Hermes atende o WhatsApp nas máquinas por SSH." : o.text));
     card.append(saving ? el("span", "reply-spin") : el("span", "reply-radio"), body);
-    card.addEventListener("click", () => { if (o.id !== atual || st?.escolha == null) void escolherAgente(o.id); });
+    card.addEventListener("click", () => { if (soNasMaquinas) return; if (o.id !== atual || st?.escolha == null) void escolherAgente(o.id); });
     cards.append(card);
   }
   container.append(cards);
