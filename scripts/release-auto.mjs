@@ -193,7 +193,8 @@ function instalar() {
   shOu("git", ["fetch", "-q", "--tags", "origin", "main"]);
   if (!prepararWorktree(sh("git", ["rev-parse", "origin/main"]))) { console.error(`✗ não preparei o worktree ${WT} (log: ${LOG})`); process.exit(1); }
   if (!existsSync(join(WT, "scripts", "release-auto.mjs"))) { console.error("✗ o origin/main ainda não tem scripts/release-auto.mjs: instale depois do merge"); process.exit(1); }
-  const path = ["/opt/homebrew/bin", "/usr/local/bin", dirname(process.execPath), "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(":");
+  // ~/.local/bin: o uv, que acha o Python 3.10+ do instalador .dmg (scripts/dmg.mjs); o do macOS é 3.9.
+  const path = ["/opt/homebrew/bin", "/usr/local/bin", join(homedir(), ".local", "bin"), dirname(process.execPath), "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(":");
   writeFileSync(PLIST, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
