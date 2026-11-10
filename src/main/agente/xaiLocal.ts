@@ -157,13 +157,16 @@ export async function prepareGrokOauthLocal(onLine?: (line: string) => void): Pr
 
 let current: ChildProcess | null = null;
 
-/** `hermes auth add xai-oauth` num pseudo-terminal (`script`: sem pty o Hermes não imprime o link e fica parado). */
+/**
+ * `hermes auth add xai-oauth` num pseudo-terminal (`script`: sem pty o Hermes não imprime o link e fica parado). A entrada
+ * fica em /dev/null: o `script` do macOS chama tcgetattr na entrada, e o pipe do Node (um socket) o faz sair na hora
+ * com código 1 ("Operation not supported on socket"). O Hermes só espera a aprovação; não lê nada da entrada.
+ */
 export function startXaiLoginLocal(send: (ev: ClaudeLoginEvent) => void): Promise<void> {
   if (!hermesInstalado()) { send({ kind: "done", ok: false, text: "o Grok ainda não foi preparado neste Mac (passo 1)" }); return Promise.resolve(); }
   if (current !== null) { send({ kind: "done", ok: false, text: "já há um login da xAI em andamento neste Mac" }); return Promise.resolve(); }
   return new Promise((resolve) => {
-    const child = spawn("/usr/bin/script", ["-q", "/dev/null", HERMES, "auth", "add", "xai-oauth", "--type", "oauth", "--no-browser"], { stdio: ["pipe", "pipe", "pipe"], env: envHermes() });
-    child.stdin.on("error", () => { /* pty fechou */ });
+    const child = spawn("/usr/bin/script", ["-q", "/dev/null", HERMES, "auth", "add", "xai-oauth", "--type", "oauth", "--no-browser"], { stdio: ["ignore", "pipe", "pipe"], env: envHermes() });
     current = child;
     let buf = ""; let all = ""; let urlSent = false;
     send({ kind: "log", text: "pedindo o login da xAI neste Mac" });
@@ -189,7 +192,6 @@ export function startXaiLoginLocal(send: (ev: ClaudeLoginEvent) => void): Promis
     child.on("close", (code) => {
       clearTimeout(timer);
       current = null;
-      try { child.stdin.end(); } catch { /* ok */ }
       void (async () => {
         const added = /Added xai-oauth OAuth credential #\d+:\s*"([^"]+)"/.exec(all)?.[1] ?? null;
         let ok = false;
