@@ -8,8 +8,11 @@ import type { ZoomAction } from "../../shared/ipc";
 /** O que o menu precisa saber e poder fazer sobre a atualização do app. */
 export interface MenuAtualizacao {
   /** `pronta` = versão já preparada em disco (null = nenhuma); `podeVerificar` = false durante uma verificação. */
-  estado: () => { pronta: string | null; podeVerificar: boolean };
+  /** `buildLocal` = build que não saiu de uma release: "Atualizar agora" não tem para onde ir. */
+  estado: () => { pronta: string | null; podeVerificar: boolean; buildLocal: boolean };
   verificar: () => void;
+  /** "Atualizar agora": verifica, baixa e reinicia (o mesmo botão de Configurações › Sobre e atualização). */
+  atualizarAgora: () => void;
   aplicar: (versao: string) => void;
 }
 export interface MenuDeps {
@@ -95,6 +98,7 @@ export function installAppMenu(deps: MenuDeps): void {
   const at = deps.atualizacao.estado();
   const itensAtualizacao: Electron.MenuItemConstructorOptions[] = [
     { label: "Verificar atualizações", enabled: at.podeVerificar, click: () => deps.atualizacao.verificar() },
+    ...(at.pronta !== null || at.buildLocal ? [] : [{ label: "Atualizar agora", enabled: at.podeVerificar, click: () => deps.atualizacao.atualizarAgora() }]),
     ...(at.pronta === null ? [] : [{ label: `Reiniciar para atualizar (${at.pronta})`, click: () => deps.atualizacao.aplicar(at.pronta as string) }]),
     { type: "separator" as const },
   ];

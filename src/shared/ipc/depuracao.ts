@@ -9,7 +9,8 @@ export interface EventoDepuracao { em: number; origem: OrigemDepuracao; dono: st
 /** Tique de 1 s do main; `marca` = a última coisa síncrona que ele anunciou antes de fazer (Chaveiro, ssh). */
 export interface BatimentoDepuracao { em: number; marca: string | null; marcaEm: number | null }
 /** O que o empacotamento gravou em Resources/build.json; em dev, "dev". */
-export interface Compilacao { commit: string; branch: string; em: string }
+/** `origem`: "release" quando o empacotamento recebeu `--versao` (scripts/release.mjs); "local" no resto (hook, dist à mão). */
+export interface Compilacao { commit: string; branch: string; em: string; origem: "release" | "local" }
 export interface EstadoDepuracao {
   ligado: boolean;
   /** O que está gravado nas configurações (null = o padrão da variante decide). */

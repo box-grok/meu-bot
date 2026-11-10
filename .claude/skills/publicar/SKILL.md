@@ -67,8 +67,10 @@ Publique do checkout principal só se ele estiver limpo e no `origin/main`; sen�
 
 ## Quando algo não chega
 
-- App não atualizou: o build instalado é local com versão maior (passo 1), a release não tem o `.sig`, ou a
-  assinatura não confere (log `[atualização]` em `~/Library/Application Support/<app>/meu-bot.log`).
+- App não atualizou: peça para a pessoa clicar em **Atualizar agora** (Configurações › Sobre e atualização, ou no
+  menu do app), que verifica, baixa e reinicia; no staging a faixa "pronta para instalar" não aparece. Se nem assim:
+  o build instalado é local (a tela diz "Build local do commit …" e o botão fica desligado; passo 1), a release não
+  tem o `.sig`, ou a assinatura não confere (log `[atualização]` em `~/Library/Application Support/<app>/meu-bot.log`).
 - Máquina não atualizou: a versão do componente não subiu, o backend estava ocupado (tenta na próxima sondagem) ou
   o instalador falhou (log `[backend]`/`[finance]` no mesmo arquivo).
 - Versão nova não abre: depois de 3 aberturas sem ficar 30 s de pé, o app volta sozinho para a anterior.

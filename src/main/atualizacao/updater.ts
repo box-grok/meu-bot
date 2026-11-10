@@ -25,7 +25,7 @@ import { app, powerMonitor } from "electron";
 import { log } from "../maquina/backend";
 import { anyConversationBusy } from "../conversa/conversation";
 import { liveTerminals } from "../terminal/terminal";
-import { appTitle, caps } from "../app/variant";
+import { appTitle, caps, compilacao } from "../app/variant";
 import { broadcast, getLastFocusedHost } from "../app/windows";
 import { getAtualizarOcioso } from "../app/settings";
 import { run, runText } from "../app/proc";
@@ -55,7 +55,7 @@ const OCIOSO_POLL_MS = 60_000;
 /** Falha com a causa para a tela (`errorKind`); as frases são as que a pessoa vê. */
 class UpdateFalha extends Error { constructor(public readonly kind: UpdateErrorKind, msg: string) { super(msg); this.name = "UpdateFalha"; } }
 
-const state: UpdateState = { current: app.getVersion(), available: null, ready: null, checking: false, error: null, errorKind: null, phase: "idle", checkedAt: null, progress: null, aguardando: false, ocupadoAoAplicar: false, minima: null, abaixoDaMinima: false, atualizarOcioso: true };
+const state: UpdateState = { current: app.getVersion(), available: null, ready: null, checking: false, error: null, errorKind: null, phase: "idle", checkedAt: null, progress: null, aguardando: false, ocupadoAoAplicar: false, minima: null, abaixoDaMinima: false, atualizarOcioso: true, buildLocal: false, commit: "" };
 /** A versão preparada em disco (preparada.json); null = nada pronto. */
 let preparada: UpdatePreparada | null = null;
 let timer: NodeJS.Timeout | null = null;
@@ -68,9 +68,10 @@ let abort: AbortController | null = null;
 const minimaPorHost = new Map<string, string>();
 let ligado = false;
 
-export const updateState = (): UpdateState => ({ ...state, atualizarOcioso: getAtualizarOcioso() });
+export const updateState = (): UpdateState => ({ ...state, atualizarOcioso: getAtualizarOcioso(), buildLocal: compilacao().origem === "local", commit: compilacao().commit });
 /** O que o menu do aplicativo precisa saber: a versão pronta e se dá para pedir uma verificação agora. */
-export const updateMenuState = (): { pronta: string | null; podeVerificar: boolean } => ({
+export const updateMenuState = (): { pronta: string | null; podeVerificar: boolean; buildLocal: boolean } => ({
+  buildLocal: compilacao().origem === "local",
   pronta: ativo() ? state.ready : null,
   podeVerificar: ativo() && state.phase !== "checking" && state.phase !== "downloading" && state.phase !== "verifying" && state.phase !== "applying",
 });
@@ -140,6 +141,23 @@ function agendar(ms: number, trigger: UpdateTrigger): void {
 export async function checkNow(trigger: UpdateTrigger = "explicito"): Promise<UpdateState> {
   if (!ativo()) return updateState();
   await check(trigger);
+  return updateState();
+}
+/**
+ * "Atualizar agora" (Configurações › Sobre e atualização): verifica, baixa e reinicia num clique, para quem não quer
+ * esperar o ciclo (no staging a faixa de cima não aparece). Só vai para a mais nova da release, nunca para trás; com
+ * uma resposta em andamento, cai no mesmo "Parar e atualizar" do botão de aplicar. Devolve o estado quando não reinicia.
+ */
+export async function atualizarAgora(): Promise<UpdateState> {
+  if (!ativo()) return updateState();
+  if (state.phase === "applying") return updateState();
+  await check("atualizar-agora");
+  if (state.phase !== "ready" || state.ready === null) {
+    registrar("atualizar-agora", state.phase === "up-to-date", state.phase === "up-to-date" ? "já na mais recente" : (state.error ?? state.phase));
+    return updateState();
+  }
+  log(`[atualização] "Atualizar agora": reiniciando na ${state.ready}`);
+  await applyUpdate(state.ready, "clique");
   return updateState();
 }
 /** Ao acordar o Mac ou voltar a internet: só se a última verificação ficou velha (o ciclo normal cobre o resto). */

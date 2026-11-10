@@ -86,6 +86,7 @@ const sharedApi: MeuBotSharedApi = {
   termReplay: (id: string) => ipcRenderer.invoke("term:replay", { id }),
   updateState: () => ipcRenderer.invoke("update:state", {}),
   checkUpdate: () => ipcRenderer.invoke("update:check", {}),
+  updateNow: () => ipcRenderer.invoke("update:now", {}),
   applyUpdate: (expectedVersion: string, forcar = false) => ipcRenderer.invoke("update:apply", { expectedVersion, forcar }),
   moveAppToApplications: () => ipcRenderer.invoke("update:mover"),
   findInPage: (texto: string, opcoes: { adiante: boolean; proximo: boolean }) => ipcRenderer.invoke("find:start", { texto, ...opcoes }),

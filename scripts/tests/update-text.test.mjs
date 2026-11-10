@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { updateStateText, updateBlockerText, APLICAR, PARAR_E_APLICAR } from "../../dist/renderer/lib/update-text.js";
+import { updateStateText, updateBlockerText, updateNowButton, notasUrl, APLICAR, PARAR_E_APLICAR, ATUALIZAR_AGORA } from "../../dist/renderer/lib/update-text.js";
 
-const base = { current: "0.1.0", available: null, ready: null, checking: false, error: null, errorKind: null, checkedAt: null, progress: null, aguardando: false, ocupadoAoAplicar: false, minima: null, abaixoDaMinima: false, atualizarOcioso: true };
+const base = { current: "0.1.0", available: null, ready: null, checking: false, error: null, errorKind: null, checkedAt: null, progress: null, aguardando: false, ocupadoAoAplicar: false, minima: null, abaixoDaMinima: false, atualizarOcioso: true, buildLocal: false, commit: "" };
 const NOW = Date.parse("2026-10-17T05:00:00Z");
 
 test("cada fase vira uma frase, como no Rambox", () => {
@@ -59,4 +59,40 @@ test("bloqueador de versão mínima: o que a pessoa vê em cada fase", () => {
   assert.match(e.text, /Não consegui verificar atualizações: GitHub respondeu 503/); assert.equal(e.showManual, true, "sem download, o caminho manual aparece");
   assert.equal(b({ phase: "up-to-date" }).showManual, true, "a release ainda não tem a versão exigida: baixar à mão");
   assert.equal(b({ phase: "applying", ready: "0.3.1" }).title, "Atualizando…");
+});
+
+test("build local: não diz 'versão mais recente', diz de que commit veio e que nada publicado é mais novo", () => {
+  const local = { ...base, phase: "up-to-date", checkedAt: "2026-10-17T04:59:50Z", buildLocal: true, commit: "19228cc" };
+  const t = updateStateText(local, "meu-bot-staging", NOW);
+  assert.match(t.text, /^Build local do commit 19228cc, à frente da última versão publicada \(conferido agora\)\./);
+  assert.doesNotMatch(t.text, /versão mais recente/);
+  assert.equal(t.kind, "ok");
+  assert.match(updateStateText({ ...local, commit: "" }, "meu-bot-staging", NOW).text, /^Build local, à frente/, "sem build.json, sem commit na frase");
+  assert.equal(updateStateText({ ...local, buildLocal: false }, "meu-bot", NOW).text, "Você está na versão mais recente (conferido agora).");
+});
+
+test("'Atualizar agora': ligado em dia ou com erro, 'Atualizando…' no caminho, some quando outra ação é a certa", () => {
+  for (const phase of ["up-to-date", "error"]) {
+    assert.deepEqual({ ...updateNowButton({ ...base, phase }), title: "" }, { hidden: false, disabled: false, label: ATUALIZAR_AGORA, title: "" }, phase);
+  }
+  for (const phase of ["checking", "available", "downloading", "verifying", "applying"]) {
+    const b = updateNowButton({ ...base, phase, available: "0.2.0", ready: "0.2.0" });
+    assert.equal(b.disabled, true, phase); assert.equal(b.label, "Atualizando…", phase);
+  }
+  assert.equal(updateNowButton({ ...base, phase: "idle" }).disabled, true, "fora do app instalado não há o que atualizar");
+  assert.equal(updateNowButton({ ...base, phase: "ready", ready: "0.2.0" }).hidden, true, "pronta: o 'Reiniciar e atualizar' fala");
+  assert.equal(updateNowButton({ ...base, phase: "needs-move" }).hidden, true, "pasta só de leitura: o 'Mover para Aplicativos' fala");
+});
+
+test("'Atualizar agora' num build local: desligado com a dica, para não levar a uma release mais velha", () => {
+  const b = updateNowButton({ ...base, phase: "up-to-date", buildLocal: true });
+  assert.equal(b.disabled, true); assert.equal(b.hidden, false); assert.equal(b.label, ATUALIZAR_AGORA);
+  assert.match(b.title, /rebuild do main/);
+});
+
+test("notas de lançamento: CHANGELOG do main num build local, a página da versão numa release", () => {
+  assert.equal(notasUrl({ buildLocal: true, current: "0.80.0" }), "https://github.com/diegofornalha/meu-bot/blob/main/docs/CHANGELOG.md");
+  assert.equal(notasUrl({ buildLocal: false, current: "0.79.3" }), "https://github.com/diegofornalha/meu-bot/releases/tag/v0.79.3");
+  assert.equal(notasUrl({ buildLocal: false, current: "0.79.3-staging.2" }), "https://github.com/diegofornalha/meu-bot/releases/tag/v0.79.3-staging.2");
+  assert.equal(notasUrl({ buildLocal: false, current: "dev" }), "https://github.com/diegofornalha/meu-bot/releases", "versão fora do formato: a lista");
 });

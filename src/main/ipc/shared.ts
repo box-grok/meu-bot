@@ -16,7 +16,7 @@ import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTermi
 import { isSupportAlias } from "../suporte/support-code";
 import { registrar, registrarVarios } from "../auditoria/auditoria";
 import { acaoDaMarca } from "../auditoria/auditoria-core";
-import { applyUpdate, checkNow, moverParaAplicativos, updateState } from "../atualizacao/updater";
+import { applyUpdate, atualizarAgora, checkNow, moverParaAplicativos, updateState } from "../atualizacao/updater";
 import { checkNow as netCheckNow, hostIsLocalAddr } from "../app/net";
 import { claudeAuthInfo } from "../agente/claudeLogin";
 import { xaiAuthInfo } from "../agente/xaiLogin";
@@ -482,6 +482,11 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   // Atualização automática do próprio app.
   handleShared("update:state", () => updateState());
   handleShared("update:check", () => checkNow("explicito"));
+  // "Atualizar agora": verifica, baixa e reinicia; só da janela de uma máquina, como o "Reiniciar e atualizar".
+  handleShared("update:now", (event) => {
+    if (hostFromEvent(event) === null) throw new Error("origem inválida");
+    return atualizarAgora();
+  });
   handleShared("net:check", (_event, payload: unknown) => netCheckNow((payload as { force?: unknown } | null)?.force === true));
   handleShared("host:local-addr", (event) => { const h = hostFromEvent(event)?.host; return h === undefined ? false : hostIsLocalAddr(h); });
   // "Reiniciar e atualizar": só da janela de uma máquina, e só para a versão que o botão mostrou. `forcar` é o

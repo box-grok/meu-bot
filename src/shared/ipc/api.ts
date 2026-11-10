@@ -154,6 +154,8 @@ export interface MeuBotSharedApi {
   updateState(): Promise<UpdateState>;
   /** "Verificar agora": consulta o GitHub fora do ciclo; devolve o estado ao fim. */
   checkUpdate(): Promise<UpdateState>;
+  /** "Atualizar agora": verifica, baixa e reinicia na mais nova; devolve o estado quando não há o que instalar. */
+  updateNow(): Promise<UpdateState>;
   /** "Reiniciar e atualizar": só troca se a versão pronta ainda é a que o botão mostrou (`expectedVersion`). */
   /** `forcar` = o clique em "Parar e atualizar": sem ele, uma resposta em andamento não é interrompida. */
   applyUpdate(expectedVersion: string, forcar?: boolean): Promise<void>;

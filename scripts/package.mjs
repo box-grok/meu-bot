@@ -56,9 +56,10 @@ const paths = await packager({
 for (const p of paths) {
   const res = join(p, `${name}.app`, "Contents", "Resources");
   writeFileSync(join(res, "variant.json"), `${JSON.stringify({ variant: produto.variant })}\n`);
-  // Build: commit e branch de onde o app saiu, para a faixa de depuração dizer qual build está aberto (vazio se o git não responde).
+  // Build: commit e branch de onde o app saiu, para a faixa de depuração dizer qual build está aberto (vazio se o git não responde);
+  // `origem` separa a release (`--versao`) do build local, que a tela de atualização não deve chamar de "versão mais recente".
   const git = (args) => { try { return execFileSync("git", args, { encoding: "utf8" }).trim(); } catch { return ""; } };
-  writeFileSync(join(res, "build.json"), `${JSON.stringify({ commit: git(["rev-parse", "--short", "HEAD"]), branch: git(["branch", "--show-current"]), em: new Date().toISOString() })}\n`);
+  writeFileSync(join(res, "build.json"), `${JSON.stringify({ commit: git(["rev-parse", "--short", "HEAD"]), branch: git(["branch", "--show-current"]), em: new Date().toISOString(), origem: versao !== null ? "release" : "local" })}\n`);
   // Extensões embutidas (meu-bot-crm): Resources/<pasta da extensão>/ (manifest.json, content.js, popup.js, …).
   for (const e of produto.extensoes) cpSync(join("build", e), join(res, e), { recursive: true });
   // Client OAuth do Google (Google Contatos → CRM): config/google-oauth.json local, fora do git; sem ele o app só
