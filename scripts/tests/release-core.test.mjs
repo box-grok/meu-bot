@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { componentesSemVersao, lerVersao, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "../release-core.mjs";
+import { componentesSemVersao, faltasParaPublicar, lerVersao, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "../release-core.mjs";
 
 test("release staging: o próximo N sai das tags dessa versão", () => {
   assert.equal(proximaStaging("0.2.0", []), 1);
@@ -68,4 +68,17 @@ test("instalador .dmg: só o app das pessoas, nos dois canais (nem admin nem fin
   // A tabela de verdade (dist/): o cliente e o staging dele levam; os admin e o financeiro, não.
   const { PRODUTOS } = await import("../produtos.mjs");
   assert.deepEqual(PRODUTOS.filter((p) => p.instalador).map((p) => p.variant).sort(), ["client", "client-staging"]);
+});
+
+test("faltasParaPublicar (--conferir): admin sem build/suporte para; notas vazias só avisam", () => {
+  const admin = { nome: "meu-bot-admin-gestao", caps: { supportAdmin: true } };
+  const app = { nome: "meu-bot", caps: { supportAdmin: false } };
+  const nada = () => false;
+  const comSuporte = (c) => c === "build/suporte/admins.json";
+  assert.deepEqual(faltasParaPublicar({ produtos: [app, admin], existe: comSuporte, notas: "- algo" }), { erros: [], avisos: [] });
+  assert.equal(faltasParaPublicar({ produtos: [app, admin], existe: nada, notas: "- algo" }).erros.length, 1);
+  assert.deepEqual(faltasParaPublicar({ produtos: [app], existe: nada, notas: "- algo" }).erros, [], "staging não leva o admin: sem suporte tudo bem");
+  const semNotas = faltasParaPublicar({ produtos: [app], existe: nada, notas: null });
+  assert.equal(semNotas.erros.length, 0); assert.equal(semNotas.avisos.length, 1);
+  assert.equal(faltasParaPublicar({ produtos: [], existe: nada, notas: "- x" }).erros.length, 1);
 });
