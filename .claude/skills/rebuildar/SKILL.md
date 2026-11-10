@@ -22,7 +22,10 @@ O app instalado é empacotado: mudança no código só vale depois de rebuildar.
 3. **Empacote a variante certa** pelo que mudou (`git status --short` / `git diff --name-only`):
    - Sempre: `npm run dist:admin` (instala em ~/Applications/meu-bot-admin-gestao.app e atualiza o atalho na Área de Trabalho).
    - Mudou algo fora de `src/*/admin/` que o app comum usa (inclui `extensao-crm/` e o CRM): também `npm run dist`.
-   - Mudou algo que os staging usam: também `npm run dist:staging` e `npm run dist:finance-staging`.
+   - Os staging (`meu-bot-staging`, `meu-bot-finance-staging`) não se empacotam aqui: vêm da release staging que a
+     release automática solta a cada merge (`scripts/release-auto.mjs`). Um build local sairia com a versão sem
+     sufixo e nunca mais receberia atualização. Só para depurar o staging antes do merge use `npm run dist:staging`,
+     e depois volte à release com `node scripts/release-auto.mjs --instalar`.
    Use timeout de 10 min. Confira na saída "Assinado com" e "Instalado em".
    **Mudança sem efeito visível** (refatoração, mover ou renomear arquivo, só teste ou doc): empacote só a variante que
    vai ser conferida na tela (`npm run dist` para o cliente, ou `dist:admin`); as outras ficam para a última fase de

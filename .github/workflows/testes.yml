@@ -23,6 +23,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Histórico e tags: o release-checar compara com a última release (v*) e com a base do PR.
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 26
@@ -30,3 +33,5 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # O que faria a release automática recusar: componente da máquina mudou sem subir a versão.
+      - run: node scripts/release-checar.mjs
