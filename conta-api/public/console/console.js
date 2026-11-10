@@ -545,10 +545,13 @@ function editorLicenca(tr, c) {
 function pintarAdminDevices(v) {
   const tb = $("ad-devices-tabela").querySelector("tbody"); tb.replaceChildren();
   const linhas = v.contas.flatMap((c) => c.devices.map((d) => ({ c, d })));
-  if (linhas.length === 0) { const tr = el("tr"); const td = el("td", "", "Nenhum device em conta nenhuma."); td.colSpan = 6; tr.append(td); tb.append(tr); }
+  if (linhas.length === 0) { const tr = el("tr"); const td = el("td", "", "Nenhum device em conta nenhuma."); td.colSpan = 7; tr.append(td); tb.append(tr); }
   for (const { c, d } of linhas) {
     const tr = el("tr");
-    tr.append(contaCelula(c.email, c.nome), el("td", "", `${d.name || d.id.slice(0, 8)}${d.platform ? ` · ${d.platform}` : ""}`), el("td", "", d.user || "-"), el("td", "", Object.entries(d.apps ?? {}).map(([a, x]) => `${a} ${x.version}`).join(", ") || "-"));
+    // Uso da conta ao lado de cada Mac: ativos/limite, com aviso quando um Mac novo já cairia em Pendente.
+    const ativos = c.devices.filter((x) => x.status !== "pending").length, limite = c.licenca.deviceLimit;
+    const uso = el("td", "", `${ativos}/${limite}`); if (ativos >= limite) uso.append(document.createTextNode(" "), selo("no limite", "mau"));
+    tr.append(contaCelula(c.email, c.nome), uso, el("td", "", `${d.name || d.id.slice(0, 8)}${d.platform ? ` · ${d.platform}` : ""}`), el("td", "", d.user || "-"), el("td", "", Object.entries(d.apps ?? {}).map(([a, x]) => `${a} ${x.version}`).join(", ") || "-"));
     const st = el("td"); st.append(selo(d.status === "pending" ? "Pendente" : "Ativo", d.status === "pending" ? "mau" : "ok")); tr.append(st);
     tr.append(el("td", "", dataHora(d.lastSeen)));
     tb.append(tr);
