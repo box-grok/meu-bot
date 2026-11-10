@@ -11,7 +11,7 @@ import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { cacheAgeText, type Cached } from "../lib/cache.js";
-import { actionResultText, dateInputToIso, deviceParts, healthLines, isoToDateInput, licenseSummary, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, produtoLabel, type HealthLine, type AddonRotulo } from "../lib/admin-view.js";
+import { actionResultText, dateInputToIso, deviceParts, healthLines, isoToDateInput, licenseSummary, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, ESTE_MAC_MAQUINA, ESTE_MAC_BACKEND_TEXTO, produtoLabel, type HealthLine, type AddonRotulo } from "../lib/admin-view.js";
 import type { LicensePatch, LicenseView } from "../../shared/ipc";
 
 export interface SuportePageDeps {
@@ -243,7 +243,8 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     const a = el("div", "admin-card");
     a.append(el("strong", "", "Ações de suporte"));
     const acts = el("div", "admin-actions");
-    for (const o of visibleActions(hp)) {
+    const esteMac = deps.who.machine === ESTE_MAC_MAQUINA;
+    for (const o of visibleActions(hp, esteMac)) {
       const b = el("button", "btn btn-ghost btn-small", state.busy === o.id ? "Rodando…" : o.label); b.type = "button"; b.disabled = state.busy !== null;
       b.addEventListener("click", () => deps.armConfirm(b, o.confirm, () => {
         state.busy = o.id; state.msg = null; render();
@@ -255,6 +256,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       acts.append(b);
     }
     a.append(acts);
+    if (esteMac) a.append(el("p", "hint", ESTE_MAC_BACKEND_TEXTO));
     const note = transcriptionNote(hp);
     if (note !== null) a.append(el("p", "hint", note));
     if (state.msg !== null) a.append(el("p", `hint ${state.msg.bad ? "guide-pair-note" : "audio-ok"}`, state.msg.text));

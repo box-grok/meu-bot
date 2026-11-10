@@ -195,3 +195,11 @@ test("maquinasParaAdotar: todo alias do ~/.ssh/config menos local, suporte-* e q
   );
   assert.deepEqual(maquinasParaAdotar([], people), []);
 });
+
+test("visibleActions: este Mac não tem Instalar nem Reiniciar o backend (o backend é o dos apps)", () => {
+  const h = { probe: { reachable: true, backendInstalled: false }, whatsapp: null };
+  assert.ok(visibleActions(h).some((o) => o.id === "install-backend"), "outra pessoa sem backend: Instalar aparece");
+  const ids = visibleActions(h, true).map((o) => o.id);
+  assert.ok(!ids.includes("install-backend") && !ids.includes("restart-backend"));
+  assert.ok(ids.includes("restart-gateway") && ids.includes("support-off"));
+});

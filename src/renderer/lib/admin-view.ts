@@ -165,8 +165,17 @@ export const progressUpdatedText = (at: string): string =>
  * Ações que fazem sentido: reiniciar sempre; transcrição só em máquina cujo agente transcreve áudio (capacidade
  * `audio`: Ativar quando ela não entende áudios, Desativar quando entende). Sem saúde ainda, só o que não depende dela.
  */
-export const visibleActions = (h: AdminHealth | null): readonly (typeof ADMIN_ACTIONS)[number][] =>
+/** `machine` da pessoa "este Mac" (o Mac do próprio admin, adotado pelo seletor; support-admin.ts esteMacComoPessoa). */
+export const ESTE_MAC_MAQUINA = "este-mac";
+/**
+ * Por que este Mac não tem Instalar/Reiniciar o backend: o backend dele é o dos apps meu-bot (cada app sobe o seu ao
+ * abrir). O instalador é o das VMs Linux: aqui, sem systemd, ele subia o backend em primeiro plano e o "Rodando…" não
+ * acabava (10 nov 2026).
+ */
+export const ESTE_MAC_BACKEND_TEXTO = "Neste Mac o backend é o dos apps meu-bot: cada app (meu-bot, staging…) sobe o seu ao abrir. Para reiniciar, feche e abra o app.";
+export const visibleActions = (h: AdminHealth | null, esteMac = false): readonly (typeof ADMIN_ACTIONS)[number][] =>
   ADMIN_ACTIONS.filter((o) => {
+    if (esteMac && (o.id === "install-backend" || o.id === "restart-backend")) return false;
     // Instalar só aparece quando a máquina está sem backend (com ele, "Reiniciar"); sem saúde ainda, não aparece.
     if (o.id === "install-backend") return h !== null && h.probe.reachable && !h.probe.backendInstalled;
     if (o.id === "restart-backend") return h === null || h.probe.backendInstalled;

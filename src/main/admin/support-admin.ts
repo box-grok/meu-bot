@@ -723,6 +723,8 @@ async function instalarBackend(host: string): Promise<{ ok: boolean; detail: str
 export async function adminAction(host: string, action: AdminAction): Promise<{ ok: boolean; detail: string }> {
   const a = ACTIONS[action];
   if (action === "support-off") return turnSupportOff(host);
+  // Este Mac: o backend é o dos apps; o instalador das VMs aqui subia em primeiro plano e não voltava.
+  if ((action === "install-backend" || action === "restart-backend") && host === aliasDoEsteMac()) return { ok: false, detail: "neste Mac o backend é o dos apps meu-bot: feche e abra o app" };
   if (action === "install-backend") return instalarBackend(host);
   // No registro (a pessoa vê; o super admin audita), quem fez é este admin, pelo nome do app dele.
   if (action === "transcription" || action === "transcription-off") {
