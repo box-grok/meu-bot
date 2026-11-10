@@ -12,6 +12,10 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+---
+
+## 10 de novembro de 2026 · v0.80.0
+
 ### "Este Mac": Grok, WhatsApp e áudios
 #### Novo
 - **Grok (xAI) na janela "Este Mac"**: o tutorial 4 aparece também aqui. O app instala o proxy do Grok numa pasta própria, sem mexer num Hermes que você já tenha, e a página da xAI abre para você entrar.
