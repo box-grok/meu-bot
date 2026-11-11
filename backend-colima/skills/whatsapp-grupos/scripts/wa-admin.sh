@@ -35,12 +35,39 @@ if [[ -z "${MEU_BOT_WA_ADMIN_FORA:-}" ]] && grep -q "$SVC" /proc/self/cgroup 2>/
   echo "❌ não consegui rodar fora do gateway (systemd-run). Peça pelo app meu-bot (Grupos › Atualizar lista) ou rode por SSH." >&2
   exit 1
 fi
+# No Mac (OpenClaw como serviço do launchd, ai.openclaw.gateway): de dentro do agente não dá para rodar fora do
+# gateway (não há systemd-run, e parar o serviço do launchd encerra os processos dele). Pelo app, sim.
+MAC_GW=""
+if [[ "$(uname -s)" == Darwin ]]; then
+  MAC_GW="gui/$(id -u)/ai.openclaw.gateway"
+  p=$$
+  while [[ -n "$p" && "$p" -gt 1 ]]; do
+    # O próprio gateway: o node rodando openclaw/dist/index.js gateway, ou o binário openclaw(-gateway). Só o
+    # executável e os argumentos dele contam (um shell cujo texto cita "openclaw gateway" não é o gateway).
+    c=$(ps -o command= -p "$p" 2>/dev/null); exe=${c%% *}; b=${exe##*/}; eh_gw=""
+    case "$b" in
+      node|node[0-9]*) [[ "$c" == *"/openclaw/dist/index.js gateway"* ]] && eh_gw=1 ;;
+      openclaw-gateway) eh_gw=1 ;;
+      openclaw) [[ "$c" == "$exe gateway"* ]] && eh_gw=1 ;;
+    esac
+    if [[ -n "$eh_gw" ]]; then
+      echo "❌ neste Mac a lista de grupos se atualiza pelo app meu-bot (Grupos › Atualizar lista): daqui de dentro do agente, parar o gateway pararia esta conversa junto." >&2
+      exit 1
+    fi
+    p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')
+  done
+fi
 [[ -n "${MEU_BOT_WA_ADMIN_LOG:-}" ]] && exec >"$MEU_BOT_WA_ADMIN_LOG" 2>&1
 # Trava: o vigia do gateway (guarda) não religa enquanto este script trabalha com o gateway parado.
 LOCK="$HOME/.cache/meu-bot/wa-admin.lock"; mkdir -p "$(dirname "$LOCK")"
 # Uma de cada vez na máquina: duas listagens juntas (dois cliques, ou os dois apps) uma religava o gateway no meio da outra.
 exec 9>"$LOCK.flock"
-flock -n 9 || { echo "❌ já há uma listagem/ação de grupos em andamento nesta máquina; espere ela terminar (uns 30 s a alguns minutos)." >&2; exit 4; }
+# O macOS não tem o flock: o mesmo flock(2) pelo perl, no descritor 9 deste shell (a trava fica com ele até o fim).
+trava() {
+  if command -v flock >/dev/null 2>&1; then flock -n 9
+  else perl -e 'use Fcntl qw(:flock); open(my $f, ">&=", 9) or exit 1; flock($f, LOCK_EX | LOCK_NB) or exit 1'; fi
+}
+trava || { echo "❌ já há uma listagem/ação de grupos em andamento nesta máquina; espere ela terminar (uns 30 s a alguns minutos)." >&2; exit 4; }
 echo $$ > "$LOCK"
 
 # 0) confere o que a listagem precisa ANTES de parar o gateway (máquina que atende clientes não fica parada à toa)
@@ -72,11 +99,20 @@ echo "🗄  backup das credenciais: $BK" >&2
 ls -1t "$BK_DIR"/whatsapp-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm -f
 
 # 2) para o gateway (e garante religar mesmo se o node falhar)
-WAS_ACTIVE=$(systemctl --user is-active "$SVC" 2>/dev/null || true)
+if [[ -n "$MAC_GW" ]]; then
+  # launchd: rodando = "state = running" no launchctl print; para e religa pelo próprio OpenClaw.
+  launchctl print "$MAC_GW" 2>/dev/null | grep -q "state = running" && WAS_ACTIVE=active || WAS_ACTIVE=""
+  SVC="gateway do OpenClaw (launchd)"
+else
+  WAS_ACTIVE=$(systemctl --user is-active "$SVC" 2>/dev/null || true)
+fi
+# O OpenClaw 2026.9 só para o próprio serviço com --force; versões que não conhecem a flag param sem ela.
+gw_parar() { if [[ -n "$MAC_GW" ]]; then openclaw gateway stop --force >/dev/null 2>&1 || openclaw gateway stop >/dev/null 2>&1; else systemctl --user stop "$SVC"; fi; }
+gw_ligar() { if [[ -n "$MAC_GW" ]]; then openclaw gateway start >/dev/null 2>&1; else systemctl --user start "$SVC"; fi; }
 religar() {
   if [[ "$WAS_ACTIVE" == "active" ]]; then
-    echo "🔁 religando $SVC…" >&2
-    systemctl --user start "$SVC"
+    echo "🔁 religando ${SVC}…" >&2
+    gw_ligar
     for i in $(seq 1 30); do
       sleep 2
       if timeout 15 openclaw channels status 2>/dev/null | grep -q 'WhatsApp.*connected'; then
@@ -92,9 +128,15 @@ fim() { religar; rm -f "$LOCK"; }
 trap fim EXIT
 
 if [[ "$WAS_ACTIVE" == "active" ]]; then
-  echo "⏸  parando $SVC…" >&2
-  systemctl --user stop "$SVC"
+  echo "⏸  parando ${SVC}…" >&2
+  gw_parar
   sleep 2
+  # No Mac, confere que o gateway saiu mesmo: duas conexões com as mesmas credenciais derrubariam a sessão.
+  if [[ -n "$MAC_GW" ]]; then
+    gw_rodando() { launchctl print "$MAC_GW" 2>/dev/null | grep -q "state = running"; }
+    for i in $(seq 1 10); do gw_rodando || break; sleep 1; done
+    gw_rodando && { echo "❌ o gateway do OpenClaw não parou; nada foi listado." >&2; exit 5; }
+  fi
 fi
 
 # 3) comando
