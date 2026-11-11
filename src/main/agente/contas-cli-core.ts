@@ -51,8 +51,10 @@ export function comandoSair(id: ContaId): string {
 /** Um SSH só para as duas: cada bloco entre marcadores, `ausente` quando a ferramenta não existe na máquina (Cloudflare: sem Node 22+ com npx). */
 export const STATUS_SH = [
   // Sem o arquivo de login não há o que perguntar: evita o npx baixar o wrangler (minutos) só para dizer "não logado".
+  // O arquivo fica em ~/.config/.wrangler no Linux, em ~/Library/Preferences/.wrangler no macOS (este Mac) e em
+  // ~/.wrangler nas instalações antigas.
   // Saída num arquivo, não num pipe, e com tempo-limite: o npm exec às vezes fica pendurado depois de responder.
-  `echo '<<cloudflare'; ${NODE22_PATH}; if [ "$NODE22" != 1 ]; then echo ausente; elif [ ! -s "$HOME/.config/.wrangler/config/default.toml" ]; then echo 'You are not authenticated.'; else T=$(mktemp); timeout 60 ${WRANGLER} whoami </dev/null >"$T" 2>&1; head -60 "$T"; rm -f "$T"; fi; echo '>>'`,
+  `echo '<<cloudflare'; ${NODE22_PATH}; if [ "$NODE22" != 1 ]; then echo ausente; elif [ ! -s "$HOME/.config/.wrangler/config/default.toml" ] && [ ! -s "$HOME/Library/Preferences/.wrangler/config/default.toml" ] && [ ! -s "$HOME/.wrangler/config/default.toml" ]; then echo 'You are not authenticated.'; else T=$(mktemp); timeout 60 ${WRANGLER} whoami </dev/null >"$T" 2>&1; head -60 "$T"; rm -f "$T"; fi; echo '>>'`,
   "echo '<<github'; command -v gh >/dev/null 2>&1 && gh auth status -h github.com </dev/null 2>&1 | head -40 || echo ausente; echo '>>'",
 ].join("; ");
 

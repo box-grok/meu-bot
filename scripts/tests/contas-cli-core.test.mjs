@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { comandoEntrar, comandoSairDoGithub, lerStatus, lerLink, loginConcluiu, isContaId, CF_ESCOPOS, GITHUB_OUTRA_CONTA, SAIR_DO_SITE, ehPaginaDoCodigoGithub, scriptColarCodigoGithub } = createRequire(import.meta.url)("../../dist/main/agente/contas-cli-core.js");
+const { STATUS_SH, comandoEntrar, comandoSairDoGithub, lerStatus, lerLink, loginConcluiu, isContaId, CF_ESCOPOS, GITHUB_OUTRA_CONTA, SAIR_DO_SITE, ehPaginaDoCodigoGithub, scriptColarCodigoGithub } = createRequire(import.meta.url)("../../dist/main/agente/contas-cli-core.js");
 
 const WHOAMI_AMPLO = `👋 You are logged in with an OAuth Token, associated with the email lv@exemplo.com.
 Scope (Access)
@@ -100,4 +100,9 @@ test("código do GitHub colado sozinho: só na página do código, só com códi
   assert.ok(js.includes('form[action="/login/device/authorize"]') && js.includes("Authorize GitHub CLI") && js.includes('uc.value !== code') && js.includes('"autorizado"'), "autoriza só o GitHub CLI e só com o código deste login");
   assert.equal(scriptColarCodigoGithub("ab12-cd34"), null, "minúsculas não são o formato do gh");
   assert.equal(scriptColarCodigoGithub('AB12"); alert(1); ("'), null, "nada fora do formato vira script");
+});
+
+test("STATUS_SH procura o login do wrangler também onde o macOS o guarda (Este Mac)", () => {
+  assert.match(STATUS_SH, /Library\/Preferences\/\.wrangler\/config\/default\.toml/);
+  assert.match(STATUS_SH, /\.config\/\.wrangler\/config\/default\.toml/);
 });
