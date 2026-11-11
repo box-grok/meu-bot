@@ -443,9 +443,9 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
 - Para terceiros, o `config/ssh-hosts.conf` do app (suas máquinas e IPs, inclusive o root da agente-box) vira
   um modelo vazio e o app é reassinado ad-hoc. `node scripts/dmg.mjs --com-minhas-maquinas` mantém o arquivo.
   Nenhum segredo vai no pacote: a chave do backend é gerada na instalação.
-- Limites: só Apple Silicon (arm64); assinado ad-hoc, então o macOS bloqueia a primeira abertura. Quem recebe
-  abre em Ajustes do Sistema › Privacidade e Segurança › "Abrir Mesmo Assim". Abrir direto exige Developer
-  ID da Apple e notarização.
+- Limites: só Apple Silicon (arm64). Até nov 2026 o app saía assinado ad-hoc / "meu-bot local" e o macOS
+  bloqueava a primeira abertura (Ajustes do Sistema › Privacidade e Segurança › "Abrir Mesmo Assim"); desde o
+  Developer ID e a notarização (`scripts/developer-id.mjs`, `scripts/notarizar.mjs`) ele abre com dois cliques.
 
 ### Conversas do WhatsApp (espelho, só leitura)
 - Seletor `[ meu-bot | WhatsApp ]` acima da busca (`#list-mode`, só com OpenClaw pronto; escolha em
