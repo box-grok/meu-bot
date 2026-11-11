@@ -108,6 +108,19 @@ export function notasUrl(u: Pick<UpdateState, "buildLocal" | "current">): string
   return /^\d+\.\d+\.\d+(-staging\.\d+)?$/.test(u.current) ? `${REPO}/releases/tag/v${u.current}` : `${REPO}/releases`;
 }
 
+/** Quantas versões mais velhas a lista mostra antes do "Mostrar mais": voltar uma ou duas é o caso comum. */
+export const VELHAS_VISIVEIS = 2;
+/**
+ * A lista "Versões publicadas" recolhida: a instalada, as mais novas e só as `VELHAS_VISIVEIS` mais velhas mais
+ * recentes; o resto (incluindo as abaixo da mínima do backend) fica atrás do "Mostrar mais". `todas` mostra tudo.
+ */
+export function releasesVisiveis<T extends Pick<ReleasePublicada, "relacao">>(rs: readonly T[], todas: boolean): { visiveis: T[]; ocultas: number } {
+  if (todas) return { visiveis: [...rs], ocultas: 0 };
+  let velhas = 0;
+  const visiveis = rs.filter((r) => r.relacao !== "mais-velha" || ++velhas <= VELHAS_VISIVEIS);
+  return { visiveis, ocultas: rs.length - visiveis.length };
+}
+
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 /** "9 nov 2026" (o ano só quando não é o de `now`). */
 export function dataCurta(iso: string | null, now: number = Date.now()): string {

@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 const req = createRequire(import.meta.url);
 const { listarReleases, decideInstalarListada, parseFixada, deveVerificarSozinho, podeTrocarComFixada, decideAplicacaoEscolhida, decideReaproveitar, escolherRelease, candidataDe } = req("../../dist/main/atualizacao/updater-core.js");
 const { mesclarCamposPerdidos } = req("../../dist/main/app/settings-normalize.js");
-import { linhaRelease, dataCurta, updateStateText } from "../../dist/renderer/lib/update-text.js";
+import { linhaRelease, releasesVisiveis, dataCurta, updateStateText } from "../../dist/renderer/lib/update-text.js";
 
 const APP = "meu-bot-staging", ARCH = "arm64";
 const zip = (v) => `${APP}-${v}-${ARCH}.zip`;
@@ -109,4 +109,14 @@ test("tela: a frase da versão fixada diz quem fixou e se há mais nova", () => 
   assert.equal(dataCurta("2026-11-09T19:30:00Z", Date.parse("2026-11-10T00:00:00Z")), "9 nov");
   assert.equal(dataCurta("2025-03-01T12:00:00Z", Date.parse("2026-11-10T00:00:00Z")), "1 mar 2025");
   assert.equal(dataCurta(null), "");
+});
+
+test("tela: a lista recolhe as mais velhas além das 2 mais recentes", () => {
+  const r = (versao, relacao) => ({ versao, relacao });
+  const rs = [r("0.83.0-staging.1", "mais-nova"), r("0.82.0-staging.2", "atual"), r("0.82.0-staging.1", "mais-velha"), r("0.81.0-staging.1", "mais-velha"), r("0.80.0-staging.4", "mais-velha"), r("0.1.0-staging.1", "mais-velha")];
+  const { visiveis, ocultas } = releasesVisiveis(rs, false);
+  assert.deepEqual(visiveis.map((x) => x.versao), ["0.83.0-staging.1", "0.82.0-staging.2", "0.82.0-staging.1", "0.81.0-staging.1"]);
+  assert.equal(ocultas, 2);
+  assert.deepEqual(releasesVisiveis(rs, true), { visiveis: rs, ocultas: 0 });
+  assert.deepEqual(releasesVisiveis(rs.slice(0, 3), false).ocultas, 0);
 });
