@@ -1,6 +1,6 @@
 ---
 name: aprovar-estavel
-description: Painel das três fases do staging à estável do meu-bot — 1) o staging está no ar e saudável, 2) a estável passa em todas as recusas (npm run release -- --conferir), 3) depois de publicada, chegou certa às pessoas e às máquinas. Use quando o usuário perguntar "como está o staging?", "quando sai a estável?", "dá para subir a estável?", "posso aprovar?", "subiu certo?", ou disser "aprovado" querendo a estável antes das 24 h do agente automático.
+description: Painel das três fases do staging à estável do meu-bot — 1) o staging está no ar e saudável, 2) a estável passa em todas as recusas (npm run release -- --conferir), 3) depois de publicada, chegou certa às pessoas e às máquinas. Use quando o usuário perguntar "como está o staging?", "quando sai a estável?", "dá para subir a estável?", "posso aprovar?", "subiu certo?", "quando posso dizer aprovado?", pedir para antecipar o staging ("roda agora", "vc antecipa?"), ou disser "aprovado" querendo a estável antes das 24 h do agente automático. Também quando a release automática parece parada (staging não saiu na hora prevista).
 ---
 
 # Aprovar a estável (as três fases)
@@ -15,6 +15,27 @@ Comece sempre por: `git fetch origin --tags` e, num worktree no `origin/main` co
 `node scripts/release-auto.mjs --check` (decisão da vez: aguardar, staging, promover, subir-base; e se o agente está
 instalado) e `tail -20 ~/Library/Logs/meu-bot-release.log` (o que ele fez por último). `<v>` = a staging candidata
 (`v<base>-staging.N`, a mais nova em `gh release list -R diegofornalha/meu-bot --limit 5`).
+
+**O agente está mesmo rodando?** O `--check` diz "instalado" porque o plist existe; isso não prova que o launchd o
+carregou. Confira `launchctl list | grep release-auto` (uma linha = carregado) e a data da última linha do log: mais de
+20 min sem nada, com a decisão "staging" ou "promover", é agente parado. Religa com
+`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.meu-bot.release-auto.plist`; ele roda na hora (RunAtLoad).
+
+**A chave no Chaveiro, para quem aprova:** toda release (do agente ou manual) assina os zips com a chave guardada no
+Chaveiro de login, sem app confiável. O macOS abre a janela "node quer usar informações confidenciais armazenadas em
+'meu-bot-release'": a pessoa digita a senha do Mac e clica **Permitir** (não "Sempre Permitir": a ideia é ver cada
+uso). **Negar** é seguro: nada é publicado e o agente tenta de novo na rodada seguinte. Diga isso ao usuário quando uma
+publicação estiver a caminho, em vez de só "aprove a chave".
+
+## Antecipar o staging (sem esperar os 10 min)
+
+O usuário pode pedir ("roda agora", "antecipa?"). É o mesmo que o agente faria, só que agora, e staging não precisa de
+"aprovado". Pause o agente antes, para ele não soltar uma segunda staging por cima
+(`launchctl bootout gui/$(id -u)/com.meu-bot.release-auto`; confira `pgrep -fl scripts/release` vazio), e num worktree
+descartável no `origin/main` preparado como a fase 2 (`git worktree add --detach ../meu-bot-release-stg origin/main`,
+`node_modules`, `build/`, `config/google-*.json`): `npm test` e `npm run release:staging`. Depois: `gh release view`
+(não é draft, 9 arquivos), religue o agente com o `bootstrap` acima e apague o worktree. O agente vê a tag no HEAD e
+passa a esperar a saúde; não publica outra. Nunca use o `../meu-bot-release` do agente para isso.
 
 ## Fase 1: o staging está no ar e saudável
 
@@ -55,8 +76,16 @@ aprovação), as versões dos componentes da máquina e `build/suporte` para o a
 pode sair do commit …. Nada foi publicado.` Um `✗` para tudo: mostre a linha e o que fazer.
 
 **Antecipar a estável** (antes das 24 h): só com o **"aprovado"** explícito do usuário, fase 1 com saúde ✓ e fase 2
-✓. Aí `npm run release` no mesmo worktree, o deploy do site se `conta-api/` mudou (skill `publicar-site`) e a PR da
-base (skill `publicar`, passo 7). O agente vê a `v<base>` publicada e passa a cuidar só da subida da base.
+✓. Pause o agente antes (`launchctl bootout`, como em "Antecipar o staging"), aí `npm run release` no mesmo worktree,
+o deploy do site se `conta-api/` mudou (skill `publicar-site`; produção só com o "pode"), religue o agente
+(`bootstrap`) e apague o worktree. O agente vê a `v<base>` publicada e abre e mergeia sozinho a PR "Versão: base
+sobe" (confira no log `=== subir-base ok`); se o `main` já tinha merges depois da `<tag>`, ele solta em seguida a
+`-staging.1` da base nova com eles.
+
+**Quando o usuário pergunta "quando posso dizer aprovado?":** quando (1) a staging candidata está publicada, (2) o
+meu-bot-staging de `/Applications` passou para ela e confirmou (saúde ✓), e (3) ele usou o que mudou e está bom. Até
+lá, responda com o estado da fase 1 ("saudável, vira estável em X h" / "ainda não confirmada: Atualizar agora" /
+"entrou merge: saiu staging nova, as 24 h recomeçaram").
 
 ## Fase 3: a estável chegou certa
 
