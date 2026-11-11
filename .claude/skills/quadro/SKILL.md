@@ -1,6 +1,6 @@
 ---
 name: quadro
-description: Opera o quadro de pendências do meu-bot, o Project #6 "meu-bot" do GitHub (https://github.com/users/diegofornalha/projects/6) — ler o que está parado e de quem depende, abrir cartões, mover pelas colunas (Fila → Claude trabalhando → Esperando você → Feito → Arquivados), pôr PRs no quadro e rotular "pronto para merge". Use no começo de toda sessão ou rodada de trabalho, quando o usuário perguntar "o que depende de mim e o que depende de você", "o que está parado", "como está o quadro", pedir para "abrir um cartão", "mover para feito", "arquivar", ou quando terminar/abrir uma PR.
+description: Opera o quadro de pendências do meu-bot, o Project #6 "meu-bot" do GitHub (https://github.com/users/diegofornalha/projects/6) — ler o que está parado e de quem depende, abrir cartões, mover pelas colunas (Fila → Claude trabalhando → Esperando você → Arquivados), pôr PRs no quadro e rotular "pronto para merge". Use no começo de toda sessão ou rodada de trabalho, quando o usuário perguntar "o que depende de mim e o que depende de você", "o que está parado", "como está o quadro", pedir para "abrir um cartão", "mover para feito", "arquivar", ou quando terminar/abrir uma PR.
 ---
 
 # Quadro: o Project #6 "meu-bot"
@@ -18,8 +18,7 @@ quando quer mudar prioridade. Quem conversa com o usuário é o Claude em pt-BR;
   | Fila | `7cbfd04e` | decidido, ninguém pegou ainda |
   | Claude trabalhando | `e6547439` | o Claude está fazendo: código, prova, verificação |
   | Esperando você | `f32b699d` | PR com `pronto para merge`, ou ação que só o usuário faz (áudio, conta, decisão) |
-  | Feito | `0ad0cfed` | entrou no main ou foi conferido; **só os 5 mais recentes** |
-  | Arquivados | `a0d0b7df` | histórico, descartado, PR de prova |
+  | Arquivados | `a0d0b7df` | concluído (mesclado ou conferido), descartado ou PR de prova |
 
 - **Campo "Depende de"** (você / Claude) e os rótulos do repo `depende: você`, `depende: Claude`, `sem-claude`,
   `pronto para merge`.
@@ -35,8 +34,8 @@ quando quer mudar prioridade. Quem conversa com o usuário é o Claude em pt-BR;
 2. **Toda PR que o Claude abre entra no quadro** (skill `contribuir`), em "Claude trabalhando". Quando Testes,
    Revisão Claude e CodeQL ficam verdes **e** a correção foi provada (memória "PR só aprovada funcionando"), ela
    ganha o rótulo `pronto para merge` e vai para "Esperando você". Nunca rotule uma PR de prova (título "NÃO MESCLAR").
-3. **Feito guarda só os 5 mais recentes**: ao entrar o sexto, o mais antigo vai para Arquivados.
-4. Os workflows nativos do Project (issue fechada → Feito, PR mesclada → Feito) estão **desligados**: é o Claude que
+3. **Não há coluna Feito** (o usuário a removeu): concluído vai direto para Arquivados.
+4. Os workflows nativos do Project (issue fechada, PR mesclada) estão **desligados**: é o Claude que
    move. Ao fechar uma issue ou ver uma PR mesclada, mova o cartão na hora.
 5. Cartão em "Esperando você" diz, no corpo, **a ação exata** que o usuário precisa fazer, em uma frase. O Claude não
    fica parado esperando: faz o resto em paralelo.

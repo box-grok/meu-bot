@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { CHAVE_RELEASE_ANTIGA, lerChaveArquivo, lerChavePrincipal } from "./chave-release.mjs";
 import { componentesPendentes } from "./release-checar.mjs";
 import { lerFragmentos } from "./changelog-fragmentos.mjs";
-import { clientesGoogleParaPublicar, faltasParaPublicar, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
+import { clientesGoogleParaPublicar, dependenciasDesalinhadas, faltasParaPublicar, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
 import { notarizar } from "./notarizar.mjs";
 
 const staging = process.argv.includes("--staging");
@@ -65,6 +65,12 @@ if (iArq >= 0) {
 }
 
 // A tabela de produtos e os componentes da máquina vêm do build (dist/main): compila o main antes de os ler.
+step("conferindo o node_modules contra o package-lock");
+{
+  const versaoInstalada = (nome) => { try { return JSON.parse(readFileSync(join("node_modules", nome, "package.json"), "utf8")).version; } catch { return null; } };
+  const erradas = dependenciasDesalinhadas(JSON.parse(readFileSync("package-lock.json", "utf8")), versaoInstalada);
+  if (erradas.length > 0) { console.error(`✗ o node_modules não é o do package-lock (rode npm ci aqui):\n  ${erradas.join("\n  ")}\nnada foi publicado`); process.exit(1); }
+}
 step("compilando para ler a tabela de produtos");
 execSync("npm run build:main", { stdio: "inherit" });
 

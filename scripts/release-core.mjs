@@ -195,3 +195,22 @@ export function fecharChangelog(texto, versao, data, fragmentos = "") {
   const f = String(fragmentos ?? "").trim();
   return texto.replace(re, () => `## Ainda não lançado\n\n---\n\n## ${data} · v${versao}${f === "" ? "" : `\n\n${f}`}`);
 }
+
+/**
+ * Dependências diretas (dependencies + devDependencies do package-lock) cuja versão instalada no node_modules não é a
+ * do lockfile. A release empacota com o node_modules do Mac: um node_modules velho já soltou a 0.83.0-staging.2 com o
+ * Electron 44.7.2 quando o lock pedia 44.10.2. `instalada(nome)` devolve a versão do node_modules/<nome> ou null.
+ */
+export function dependenciasDesalinhadas(lock, instalada) {
+  const pacotes = lock?.packages ?? {};
+  const raiz = pacotes[""] ?? {};
+  const nomes = [...Object.keys(raiz.dependencies ?? {}), ...Object.keys(raiz.devDependencies ?? {})];
+  const erradas = [];
+  for (const nome of nomes) {
+    const quer = pacotes[`node_modules/${nome}`]?.version;
+    if (!quer) continue;
+    const tem = instalada(nome);
+    if (tem !== quer) erradas.push(`${nome}: o lockfile pede ${quer}, o node_modules tem ${tem ?? "nada"}`);
+  }
+  return erradas;
+}

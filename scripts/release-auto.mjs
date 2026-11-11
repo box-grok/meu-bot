@@ -15,7 +15,8 @@
 //   node scripts/release-auto.mjs --instalar     instala o agente do launchd e troca os staging locais pelos da release
 //   node scripts/release-auto.mjs --desinstalar  tira o agente
 import { execFileSync, spawnSync } from "node:child_process";
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, rmdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, rmdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -74,10 +75,26 @@ function olhar() {
 }
 
 /** O worktree da release no commit da vez, com o que o git não guarda (como o meu-bot-build-main do hook de rebuild). */
+/** `npm ci` no worktree quando o package-lock mudou desde a última instalação (marca em node_modules/.lock-da-release). */
+function depsDoLock(dir) {
+  const nm = join(dir, "node_modules");
+  try { if (lstatSync(nm).isSymbolicLink()) rmSync(nm); } catch { /* não existe */ }
+  const lock = readFileSync(join(dir, "package-lock.json"), "utf8");
+  const hash = createHash("sha256").update(lock).digest("hex");
+  const marca = join(nm, ".lock-da-release");
+  if (existsSync(marca) && readFileSync(marca, "utf8").trim() === hash) return true;
+  log(`package-lock mudou: npm ci em ${dir}`);
+  if (!rodar("npm", ["ci", "--no-audit", "--no-fund"], dir)) return false;
+  writeFileSync(marca, `${hash}\n`);
+  return true;
+}
 function prepararWorktree(sha) {
   if (existsSync(join(WT, ".git"))) { if (!rodar("git", ["checkout", "-q", "--detach", "-f", sha], WT)) return false; }
   else if (!rodar("git", ["worktree", "add", "-q", "--detach", WT, sha], PRINCIPAL)) return false;
-  for (const nm of ["node_modules", "extensao-crm/node_modules"]) if (!existsSync(join(WT, nm)) && existsSync(join(PRINCIPAL, nm))) symlinkSync(join(PRINCIPAL, nm), join(WT, nm));
+  // node_modules próprio, instalado pelo package-lock do commit da release (npm ci só quando o lock muda). Antes era um
+  // symlink para o do checkout principal, que fica no branch dele: a 0.83.0-staging.2 saiu com o Electron velho.
+  if (!depsDoLock(WT)) return false;
+  for (const nm of ["extensao-crm/node_modules"]) if (!existsSync(join(WT, nm)) && existsSync(join(PRINCIPAL, nm))) symlinkSync(join(PRINCIPAL, nm), join(WT, nm));
   // build/ inteiro (extensão do autenticador, suporte do admin, venv do .dmg…) e os clients do Google: fora do git.
   // Apaga a cópia da rodada anterior antes: o cpSync por cima de um venv já copiado quebra com EEXIST.
   rmSync(join(WT, "build"), { recursive: true, force: true });
