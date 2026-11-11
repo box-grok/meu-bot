@@ -35,3 +35,26 @@ jobs:
       - run: npm test
       # O que faria a release automática recusar: componente da máquina mudou sem subir a versão.
       - run: node scripts/release-checar.mjs
+
+  # Teste falhou num PR deste repo: chama o "Claude automático" por workflow_dispatch. Antes ele escutava o fim
+  # de todo Testes (workflow_run) e deixava uma rodada "Skipped" a cada rodada verde. PR de fork não entra: o
+  # GITHUB_TOKEN dele é só leitura e não dispara workflow. O Claude reroda os testes por workflow_dispatch, que
+  # não aciona este job (só pull_request): sem laço.
+  chamar-claude:
+    needs: testes
+    if: |
+      failure() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(fromJSON('["diegofornalha","box-grok"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.head_ref }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh workflow run claude-auto.yml -R "$GITHUB_REPOSITORY" --ref main -f run_id="$GITHUB_RUN_ID" -f branch="$BRANCH" -f sha="$SHA" -f pr="$PR"
