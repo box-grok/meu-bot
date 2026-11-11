@@ -17,3 +17,7 @@ const produto = produtoFromArgv();
 if (produto.extensoes.length > 0) passo("npm", ["run", "build:extensao"]);
 passo("node", ["scripts/package.mjs", "--variant", produto.variant, ...(process.argv.includes("--sem-google") ? ["--sem-google"] : [])]);
 passo("node", ["scripts/fuses.mjs", "--variant", produto.variant]);
+// Notarização (Developer ID) fica para a release (scripts/release.mjs, no .app e no .dmg) e para o `npm run dmg`:
+// o build local instala neste Mac, sem quarentena, e não precisa esperar a Apple.
+const { ehDeveloperId } = await import("./assinatura.mjs");
+if (ehDeveloperId()) console.log("\n(assinado com Developer ID; a notarização acontece no npm run dmg e na release)");

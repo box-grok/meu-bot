@@ -1,4 +1,4 @@
-import { identidade } from "./assinatura.mjs";
+import { assinar } from "./assinatura.mjs";
 import { flipFuses, FuseVersion, FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
 import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync } from "node:fs";
@@ -43,9 +43,9 @@ for (const [index, value] of Object.entries(wire)) {
   if (index === "version") continue;
   console.log(`  ${(names[index] ?? index).padEnd(40)} ${value === 49 ? "enabled" : value === 48 ? "disabled" : "removed"}`);
 }
-// Identidade fixa ("meu-bot local", scripts/assinatura.mjs) quando existe: o chaveiro não pede a senha a cada build.
-const ident = identidade();
-execFileSync("codesign", ["--force", "--deep", "--sign", ident, app], { stdio: "inherit" });
+// Developer ID (hardened runtime, scripts/assinatura.mjs) quando está no chaveiro; senão a identidade fixa
+// "meu-bot local" (o chaveiro não pede a senha a cada build); senão ad-hoc.
+const ident = await assinar(app);
 console.log(ident === "-" ? "Assinatura ad-hoc aplicada em" : `Assinado com "${ident}":`, app);
 
 // Instala em ~/Applications e garante o atalho na área de trabalho. `--no-install` (scripts/release.mjs) para aqui:

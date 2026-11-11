@@ -25,6 +25,7 @@ import { CHAVE_RELEASE_ANTIGA, lerChaveArquivo, lerChavePrincipal } from "./chav
 import { componentesPendentes } from "./release-checar.mjs";
 import { lerFragmentos } from "./changelog-fragmentos.mjs";
 import { clientesGoogleParaPublicar, faltasParaPublicar, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
+import { notarizar } from "./notarizar.mjs";
 
 const staging = process.argv.includes("--staging");
 // `--conferir`: roda todas as recusas e conferências e sai antes de empacotar, sem tag nem release (skill aprovar-estavel).
@@ -95,6 +96,10 @@ for (const p of produtosDoCanal(PRODUTOS, staging ? "staging" : "estavel")) {
   execSync(`npm run build${extensao} && node scripts/package.mjs --variant ${p.variant} --versao ${version}${process.argv.includes("--sem-google") ? " --sem-google" : ""} && node scripts/fuses.mjs --variant ${p.variant} --no-install`, { stdio: "inherit" });
   const app = join("out", `${name}-darwin-${arch}`, `${name}.app`);
   if (!existsSync(app)) { console.error(`✗ não achei ${app}`); process.exit(1); }
+  // Developer ID: o .app vai notarizado e grampeado dentro do .zip (o atualizador troca o app sem passar pelo .dmg).
+  // Sem Developer ID, notarizar() só avisa: a release sai assinada com "meu-bot local", como antes.
+  step(`notarizando ${name}`);
+  notarizar(app);
   const zip = join("out", `${name}-${version}-${arch}.zip`);
   rmSync(zip, { force: true });
   execFileSync("ditto", ["-c", "-k", "--keepParent", app, zip]);

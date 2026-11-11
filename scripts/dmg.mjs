@@ -8,7 +8,8 @@
 //
 // Para mandar a outra pessoa: o config/ssh-hosts.conf do app (as suas máquinas e IPs) é trocado por um
 // modelo vazio e o app é reassinado ad-hoc. `--com-minhas-maquinas` mantém o arquivo como está.
-import { identidade } from "./assinatura.mjs";
+import { assinar, ehDeveloperId } from "./assinatura.mjs";
+import { notarizar } from "./notarizar.mjs";
 import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -117,7 +118,7 @@ try {
       "",
     ].join("\n"));
   }
-  if (!keepHosts || support) run("codesign", ["--force", "--deep", "--sign", identidade(), app]);
+  if (!keepHosts || support) await assinar(app);
 
   // 3. dmgbuild: janela 660×400 sem barras, ícones de 128, app à esquerda e Aplicativos à direita.
   step("criando o .dmg");
@@ -143,6 +144,9 @@ icon_locations = {${py(`${name}.app`)}: (165, 175), "Aplicativos": (495, 175)}
   rmSync(out, { force: true });
   run(join(venv, "bin", "dmgbuild"), ["-s", settings, name, out]);
   console.log(`✓ ${out}`);
+  // Com Developer ID, o instalador vai notarizado e grampeado (abre em qualquer Mac sem o aviso do Gatekeeper).
+  // --sem-notarizar: só para testar o .dmg localmente mais rápido.
+  if (ehDeveloperId() && !process.argv.includes("--sem-notarizar")) { step("notarizando o .dmg na Apple"); notarizar(out); }
   console.log(keepHosts ? "  (com as suas máquinas no ssh-hosts.conf)" : "  (sem as suas máquinas: pronto para mandar a outra pessoa)");
   console.log(`  Só roda em Mac ${arch === "arm64" ? "com Apple Silicon (M1 ou mais novo)" : "Intel"}.`);
 } catch (err) {

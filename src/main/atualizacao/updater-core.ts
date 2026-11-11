@@ -40,7 +40,7 @@ export function verificaAssinatura(zip: Buffer, sig: string, chaves: string | re
  * existir: aí vale qualquer Developer ID, porque quem garante a origem é a assinatura Ed25519 do zip (acima), conferida
  * antes. Com o Team ID aqui, só esse time passa.
  */
-export const TEAM_IDS_RELEASE: readonly string[] = [];
+export const TEAM_IDS_RELEASE: readonly string[] = ["WRSM2CDJ4A"]; // Diego da Silva Alcantara (conta Apple Developer ativada em 11 nov 2026)
 /** Requisito de código (`codesign --verify -R`) de um app assinado com Developer ID e, se houver, de um dos times. */
 export function requisitoDeveloperId(times: readonly string[] = TEAM_IDS_RELEASE): string {
   const base = "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists";

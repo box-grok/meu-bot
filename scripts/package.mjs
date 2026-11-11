@@ -43,7 +43,7 @@ const paths = await packager({
   // (src/main/app/variant-core.ts esquemaDe), para o staging não roubar o retorno do estável.
   protocols: [{ name: name, schemes: [esquemaDe(produto)] }],
   // Textos do aviso do macOS quando um site do Navegador pede câmera/microfone (Google, Meet…): em pt-BR.
-  extendInfo: { NSCameraUsageDescription: "O Navegador do meu-bot usa a câmera quando um site pede e você permite (ex.: verificação do Google, videochamadas).", NSMicrophoneUsageDescription: "O Navegador do meu-bot usa o microfone quando um site pede e você permite (ex.: videochamadas, áudio)." },
+  extendInfo: { NSAppleEventsUsageDescription: "O meu-bot usa Apple Events para abrir o Terminal (acesso a uma VPS nova) e fechar apps ao atualizar.", NSCameraUsageDescription: "O Navegador do meu-bot usa a câmera quando um site pede e você permite (ex.: verificação do Google, videochamadas).", NSMicrophoneUsageDescription: "O Navegador do meu-bot usa o microfone quando um site pede e você permite (ex.: videochamadas, áudio)." },
   ...(versao !== null ? {
     appVersion: versao,
     afterCopy: [async ({ buildPath }) => { const f = join(buildPath, "package.json"); const pkg = JSON.parse(readFileSync(f, "utf8")); pkg.version = versao; writeFileSync(f, `${JSON.stringify(pkg, null, 2)}\n`); }],
