@@ -14,6 +14,8 @@
 //   node scripts/release-auto.mjs --run          uma rodada (o que o launchd chama)
 //   node scripts/release-auto.mjs --instalar     instala o agente do launchd e troca os staging locais pelos da release
 //   node scripts/release-auto.mjs --desinstalar  tira o agente
+//   node scripts/release-auto.mjs --segurar "motivo"  o agente não promove a estável (staging e base seguem) até --soltar
+//   node scripts/release-auto.mjs --soltar       tira a trava; a promoção volta na rodada seguinte, se ainda couber
 import { execFileSync, spawnSync } from "node:child_process";
 import { appendFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, rmdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -27,6 +29,9 @@ import { arquivosDeFragmento, lerFragmentos } from "./changelog-fragmentos.mjs";
 const AQUI = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const HOME = homedir();
 const ESTADO = process.env.MEU_BOT_RELEASE_DIR ?? join(HOME, "Library", "Application Support", "meu-bot-release");
+/** Trava da promoção (ex.: esperando o certificado Developer ID para a estável sair notarizada): o arquivo guarda o motivo. */
+const SEGURAR = join(ESTADO, "segurar-estavel");
+const motivoSegurar = () => { try { return readFileSync(SEGURAR, "utf8").trim() || "sem motivo escrito"; } catch { return null; } };
 const LOG = process.env.MEU_BOT_RELEASE_LOG ?? join(HOME, "Library", "Logs", "meu-bot-release.log");
 const ROTULO = "com.meu-bot.release-auto";
 const PLIST = join(HOME, "Library", "LaunchAgents", `${ROTULO}.plist`);
@@ -172,6 +177,12 @@ function rodada() {
       if (/voltou para a anterior/.test(decisao.motivo) && estado.avisadoVolta !== tag) { avisar("staging não ficou de pé", decisao.motivo); gravarEstado({ ...lerEstado(), avisadoVolta: tag }); }
       return;
     }
+    const segurada = decisao.acao === "promover" ? motivoSegurar() : null;
+    if (segurada !== null) {
+      const motivo = `estável segurada (${segurada}); solte com --soltar`;
+      if (estado.ultimoMotivo !== motivo) { log(`aguardando: ${motivo}`); gravarEstado({ ...estado, ultimoMotivo: motivo }); }
+      return;
+    }
     if (estado.falhou?.chave === chave && Date.now() - estado.falhou.em < ESPERA_FALHA_MS) return;
     log(`=== ${decisao.acao} (${decisao.motivo}) no origin/main ${sha.slice(0, 12)}`);
     const erro = decisao.acao === "staging" ? fazerStaging(sha) : decisao.acao === "promover" ? promover(sha, base) : subirBase(sha, base);
@@ -239,11 +250,14 @@ const modo = process.argv[2] ?? "--check";
 if (modo === "--run") rodada();
 else if (modo === "--instalar") instalar();
 else if (modo === "--desinstalar") { spawnSync("launchctl", ["bootout", `gui/${process.getuid()}/${ROTULO}`], { stdio: "ignore" }); rmSync(PLIST, { force: true }); console.log(`✓ agente ${ROTULO} removido`); }
+else if (modo === "--segurar") { mkdirSync(ESTADO, { recursive: true }); writeFileSync(SEGURAR, `${process.argv.slice(3).join(" ") || "sem motivo escrito"}\n`); log(`estável segurada: ${motivoSegurar()}`); console.log(`✓ o agente não promove a estável até --soltar (${motivoSegurar()})`); }
+else if (modo === "--soltar") { rmSync(SEGURAR, { force: true }); log("trava da estável solta"); console.log("✓ trava solta: a promoção volta na rodada seguinte, se couber"); }
 else if (modo === "--check") {
   const { sha, base, tag, decisao } = olhar();
   const e = lerEstado();
   console.log(`origin/main ${sha.slice(0, 12)} · base ${base} · staging no HEAD: ${tag ?? "nenhum"}`);
   console.log(`decisão: ${decisao.acao} — ${decisao.motivo}`);
+  if (motivoSegurar() !== null) console.log(`estável segurada: ${motivoSegurar()} (solte com --soltar)`);
   if (e.falhou) console.log(`última falha: ${e.falhou.chave} em ${new Date(e.falhou.em).toLocaleString("pt-BR")}: ${e.falhou.erro}`);
   console.log(`agente: ${existsSync(PLIST) ? "instalado" : "não instalado"} · worktree: ${WT}${existsSync(WT) ? "" : " (ainda não criado)"} · log: ${LOG}`);
-} else { console.error("uso: node scripts/release-auto.mjs --check | --run | --instalar | --desinstalar"); process.exit(64); }
+} else { console.error("uso: node scripts/release-auto.mjs --check | --run | --instalar | --desinstalar | --segurar \"motivo\" | --soltar"); process.exit(64); }

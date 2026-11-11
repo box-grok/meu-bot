@@ -27,6 +27,12 @@ Chaveiro de login, sem app confiável. O macOS abre a janela "node quer usar inf
 uso). **Negar** é seguro: nada é publicado e o agente tenta de novo na rodada seguinte. Diga isso ao usuário quando uma
 publicação estiver a caminho, em vez de só "aprove a chave".
 
+**Segurar a estável** (ex.: esperando o certificado Developer ID para ela sair notarizada): `node scripts/release-auto.mjs
+--segurar "motivo"` no worktree do agente. O agente segue soltando staging e subindo a base, mas não promove; o
+`--check` mostra `estável segurada: …`. Quando puder sair: `--soltar` (a promoção volta na rodada seguinte, se a
+staging ainda estiver saudável) ou o caminho manual com o "aprovado". A trava fica em
+`~/Library/Application Support/meu-bot-release/segurar-estavel`.
+
 ## Antecipar o staging (sem esperar os 10 min)
 
 O usuário pode pedir ("roda agora", "antecipa?"). É o mesmo que o agente faria, só que agora, e staging não precisa de
