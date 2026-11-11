@@ -57,4 +57,5 @@ jobs:
           BRANCH: ${{ github.head_ref }}
           SHA: ${{ github.event.pull_request.head.sha }}
           PR: ${{ github.event.pull_request.number }}
-        run: gh workflow run claude-auto.yml -R "$GITHUB_REPOSITORY" --ref main -f run_id="$GITHUB_RUN_ID" -f branch="$BRANCH" -f sha="$SHA" -f pr="$PR"
+        # ator: quem fez o PR correr; na execução disparada o github.actor vira github-actions[bot].
+        run: gh workflow run claude-auto.yml -R "$GITHUB_REPOSITORY" --ref main -f run_id="$GITHUB_RUN_ID" -f branch="$BRANCH" -f sha="$SHA" -f pr="$PR" -f ator="$GITHUB_ACTOR"
