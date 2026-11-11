@@ -57,6 +57,11 @@ nesta sessão** (branch de outra sessão: só avise o usuário).
 
 ## Ao terminar
 
+- **Quadro** (skill `quadro`): ponha a PR no Project #6 em "Claude trabalhando"
+  (`gh project item-add 6 --owner diegofornalha --url <url da PR>`). Quando Testes, Revisão Claude e CodeQL ficarem
+  verdes e a correção estiver provada, rotule `pronto para merge` e mova para "Esperando você"; é o sinal para o
+  usuário mesclar sem reler.
+
 Diga em pt-BR, em poucas linhas: o link do PR, o branch, o que foi testado e o que falta conferir. Avise onde está o
 worktree (`../meu-bot-<nome>`), que o checkout principal não mudou, e que ele sai com `git worktree remove ../meu-bot-<nome>`
 quando a PR entrar.
