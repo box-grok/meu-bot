@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { componentesSemVersao, faltasParaPublicar, juntarFragmentos, lerVersao, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "../release-core.mjs";
+import { componentesSemVersao, dependenciasDesalinhadas, faltasParaPublicar, juntarFragmentos, lerVersao, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "../release-core.mjs";
 
 test("release staging: o próximo N sai das tags dessa versão", () => {
   assert.equal(proximaStaging("0.2.0", []), 1);
@@ -103,4 +103,13 @@ test("notasDaRelease com docs/changelog/: os arquivos vêm antes do que estiver 
   assert.equal(notasDaRelease("## Ainda não lançado\n\n---\n\n## 4 de novembro\n- não\n", "### Novo\n- x"), "### Novo\n- x");
   assert.equal(notasDaRelease(null, "### Novo\n- x"), "### Novo\n- x");
   assert.equal(notasDaRelease("## Ainda não lançado\n\n---\n", "  "), null, "sem nada dos dois lados");
+});
+
+test("release recusa node_modules diferente do package-lock (a 0.83.0-staging.2 saiu com o Electron velho)", () => {
+  const lock = { packages: { "": { dependencies: { "adm-zip": "^0.6.1" }, devDependencies: { electron: "44.10.2" } }, "node_modules/electron": { version: "44.10.2" }, "node_modules/adm-zip": { version: "0.6.1" } } };
+  const inst = { electron: "44.7.2", "adm-zip": "0.6.1" };
+  assert.deepEqual(dependenciasDesalinhadas(lock, (n) => inst[n] ?? null), ["electron: o lockfile pede 44.10.2, o node_modules tem 44.7.2"]);
+  assert.deepEqual(dependenciasDesalinhadas(lock, (n) => ({ ...inst, electron: "44.10.2" })[n]), []);
+  assert.deepEqual(dependenciasDesalinhadas(lock, () => null).length, 2);
+  assert.deepEqual(dependenciasDesalinhadas({}, () => null), []);
 });
