@@ -1,7 +1,7 @@
 import type { UpdateState } from "../../shared/ipc";
 import { byId as $ } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { updateStateText, updateBlockerText, updateNowButton, notasUrl, linhaRelease, dataCurta, APLICAR, ATUALIZAR_AGORA } from "../lib/update-text.js";
+import { updateStateText, updateBlockerText, updateNowButton, notasUrl, linhaRelease, releasesVisiveis, dataCurta, APLICAR, ATUALIZAR_AGORA } from "../lib/update-text.js";
 import { aoMudarConta, contaAtual } from "../conta/conta.js";
 import type { ReleasePublicada } from "../../shared/ipc";
 import { ctx } from "../app/ctx.js";
@@ -88,10 +88,13 @@ function applyFromButton(btn: HTMLButtonElement, onError: (msg: string) => void)
 /* ---------- Versões publicadas (só conta super admin; o main confere o papel no servidor a cada chamada) ---------- */
 let releases: ReleasePublicada[] = [];
 let confirmando: string | null = null;
+/** "Mostrar mais" clicado: a lista inteira, até recarregar. */
+let todasReleases = false;
 const ehSuper = (): boolean => contaAtual()?.conta?.admin === "super";
 function pintarReleases(): void {
   releasesLista.replaceChildren();
-  for (const r of releases) {
+  const { visiveis, ocultas } = releasesVisiveis(releases, todasReleases);
+  for (const r of visiveis) {
     const l = linhaRelease(r, confirmando === r.versao);
     const li = document.createElement("li");
     const v = document.createElement("span"); v.className = "rel-versao"; v.textContent = r.versao;
@@ -107,6 +110,13 @@ function pintarReleases(): void {
     if (l.aviso !== null) { const p = document.createElement("p"); p.className = "rel-aviso"; p.textContent = l.aviso; li.append(p); }
     releasesLista.append(li);
   }
+  if (ocultas > 0) {
+    const li = document.createElement("li");
+    const b = document.createElement("button"); b.type = "button"; b.className = "btn btn-small btn-ghost";
+    b.textContent = `Mostrar mais ${ocultas} ${ocultas === 1 ? "versão mais velha" : "versões mais velhas"}`;
+    b.addEventListener("click", () => { todasReleases = true; pintarReleases(); });
+    li.append(b); releasesLista.append(li);
+  }
 }
 function instalar(versao: string, b: HTMLButtonElement): void {
   b.disabled = true; b.textContent = "Preparando…";
@@ -119,7 +129,7 @@ function instalar(versao: string, b: HTMLButtonElement): void {
 function carregarReleases(forcar = false): void {
   releasesStatus.textContent = "Consultando as releases…"; releasesStatus.className = "update-line";
   void window.meuBot.updateReleases(forcar).then((rs) => {
-    releases = rs; confirmando = null; pintarReleases();
+    releases = rs; confirmando = null; todasReleases = false; pintarReleases();
     releasesStatus.textContent = rs.length === 0 ? "Nenhuma release deste canal publicada." : ""; releasesStatus.className = "update-line";
   }).catch((err: unknown) => { releases = []; pintarReleases(); releasesStatus.textContent = ipcErrorText(err); releasesStatus.className = "update-line bad"; });
 }
