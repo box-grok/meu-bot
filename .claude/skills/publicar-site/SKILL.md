@@ -32,7 +32,8 @@ antigo. O app (`npm run release…`) é outra coisa: ver skill `publicar`.
    - `curl -s https://site-staging.agentesgrok.com/download/mac.json` → a pre-release de staging mais nova
      (`meu-bot-staging-…zip`; cai na estável se não houver)
    - `curl -s -o /dev/null -w '%{http_code}' https://site-staging.agentesgrok.com/obrigado` → 200
-   - `curl -s https://site-staging.agentesgrok.com/robots.txt` → `Disallow: /` (staging fica fora dos buscadores)
+   - `curl -s -D - -o /dev/null https://site-staging.agentesgrok.com/ | grep -i x-robots` → `x-robots-tag: noindex, nofollow`
+     (staging é a mesma home em revisão e fica fora dos buscadores por esse cabeçalho; o `robots.txt` é o mesmo da produção)
 5. **Produção só com o "pode" do usuário** (é o site público): `npm run deploy`, e as mesmas conferências sem
    `-staging`: `/health` com `"canal":"producao"`, `/download/mac.json` com a **estável** mais nova
    (`/releases/latest`), `robots.txt`, `sitemap.xml` e `llms.txt` com 200.
