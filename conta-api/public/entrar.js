@@ -14,7 +14,7 @@ const secoes = ["escolha", "aguardando", "email-enviado", "senha-enviada", "pron
 const orgSlug = /^\/(?:enterprise|org)\/([a-z0-9-]{1,40})\/?$/.exec(location.pathname)?.[1] ?? null;
 const perguntaOrg = orgSlug === null && /^\/(?:enterprise|org)\/?$/.test(location.pathname);
 const mostrar = (id) => { for (const s of secoes) $(s).hidden = s !== id; };
-const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/, CHALLENGE_RE = /^[A-Za-z0-9_-]{43}$/, ESQUEMA_RE = /^[a-z][a-z0-9-]{1,40}$/;
+const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/, CHALLENGE_RE = /^[A-Za-z0-9_-]{43}$/, ESQUEMA_RE = /^(?:web|meu-bot(?:-[a-z0-9]+){0,6})$/; // = ESQUEMA_RE de src/sessao-core.ts
 const CHAVE_EMAIL = "meu-bot-conta-email";
 
 // Os parâmetros do app ficam na URL (o link do e-mail volta para esta mesma URL, então sobrevivem).

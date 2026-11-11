@@ -65,7 +65,7 @@ export async function vpsNova(raw: unknown, onLine: (line: string) => void): Pro
       // app; é o mesmo caminho do login do Claude), e o job espera a chave entrar.
       onLine(`a VPS aceita senha: abrindo o Terminal para o ssh-copy-id; digite a senha de ${usuario}@${endereco} lá (até 15 min)…`);
       const cmd = `ssh-copy-id -i ${chave.arquivo}.pub -o StrictHostKeyChecking=accept-new -p ${porta} ${usuario}@${endereco}`;
-      spawn("osascript", ["-e", `tell application "Terminal" to do script "${cmd.replace(/"/g, '\\"')}"`, "-e", 'tell application "Terminal" to activate'], { stdio: "ignore" }).on("error", () => { /* sem Terminal: o laço abaixo esgota e explica */ });
+      spawn("osascript", ["-e", `tell application "Terminal" to do script "${cmd.replace(/[\\"]/g, "\\$&")}"`, "-e", 'tell application "Terminal" to activate'], { stdio: "ignore" }).on("error", () => { /* sem Terminal: o laço abaixo esgota e explica */ });
       const until = Date.now() + COPY_ID_WAIT_MS;
       while (motivo === "senha" && Date.now() < until) {
         await sleep(10_000);

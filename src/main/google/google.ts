@@ -18,6 +18,8 @@ import { ensureTunnel, log } from "../maquina/tunnel";
 import { getBackendPort } from "../app/settings";
 import { browserAsk, browserWebContents, reservarRetornoLocal } from "../navegador/browser";
 import { CAMPOS_PESSOA, URL_TOKEN, caminhoNoDrive, consultaPasta, corpoUpload, temDrive, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, pessoaParaContato, pkce, temEscrita, urlDeAutorizacao, type ClienteOAuth, type ContatoGoogle, type ContatoWhatsapp } from "./google-core";
+/** Texto da query na página do callback: nunca vira HTML. */
+const escHtml = (t: string): string => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 export interface GoogleStatus { configurado: boolean; conectado: boolean; conectando: boolean; escrita: boolean; precisaReconectar: boolean; email: string | null; sincronizando: boolean; ultimaSync: string | null; total: number | null; criados: number | null; atualizados: number | null; whatsappSalvos: number | null; whatsappErro: string | null; erro: string | null }
 const ARQ_TOKEN = (): string => path.join(app.getPath("userData"), "google-contatos.bin");
@@ -67,7 +69,7 @@ async function fluxoLogin(host: string, c: ClienteOAuth): Promise<void> {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       // Fluxo completo: a aba volta sozinha para a página Contatos do CRM no Gmail (lá aparece a sincronização).
       const volta = "https://mail.google.com/mail/u/0/#meu-bot-crm/contatos";
-      res.end(`<!doctype html><meta charset="utf-8"><title>meu-bot CRM</title>${ok ? `<meta http-equiv="refresh" content="2;url=${volta}">` : ""}<body style="font:16px system-ui;padding:40px">${ok ? `✅ Google Contatos conectado. Voltando para os Contatos do meu-bot CRM… <a href="${volta}">ir agora</a>` : `Não deu: ${u.searchParams.get("error") ?? "retorno inválido"}. Feche esta aba e tente de novo.`}</body>`);
+      res.end(`<!doctype html><meta charset="utf-8"><title>meu-bot CRM</title>${ok ? `<meta http-equiv="refresh" content="2;url=${volta}">` : ""}<body style="font:16px system-ui;padding:40px">${ok ? `✅ Google Contatos conectado. Voltando para os Contatos do meu-bot CRM… <a href="${volta}">ir agora</a>` : `Não deu: ${escHtml(u.searchParams.get("error") ?? "retorno inválido")}. Feche esta aba e tente de novo.`}</body>`);
       clearTimeout(t); srv.close();
       if (ok) resolve({ code: u.searchParams.get("code") as string, redirect }); else reject(new Error(u.searchParams.get("error") === "access_denied" ? "você não autorizou o acesso aos contatos" : "retorno inválido do Google"));
     });
