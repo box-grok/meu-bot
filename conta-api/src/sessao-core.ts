@@ -8,8 +8,11 @@ export const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
 /** PKCE (RFC 7636): verifier de 43 a 128 caracteres; challenge = base64url(sha256(verifier)), 43 caracteres. */
 export const VERIFIER_RE = /^[A-Za-z0-9._~-]{43,128}$/;
 export const CHALLENGE_RE = /^[A-Za-z0-9_-]{43}$/;
-/** Esquema do deep link (esquemaDe em src/main/app/variant-core.ts): o nome do produto. */
-export const ESQUEMA_RE = /^[a-z][a-z0-9-]{1,40}$/;
+/**
+ * Esquema do deep link (esquemaDe em src/main/app/variant-core.ts): o nome do produto, sempre `meu-bot…`, ou `web`
+ * (o console). Nunca um esquema genérico como `javascript`, `data` ou `http`, que a página de login abriria.
+ */
+export const ESQUEMA_RE = /^(?:web|meu-bot(?:-[a-z0-9]+){0,6})$/;
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 /** Id de device: o uuid do device.json, ou o alias antigo (12 hex). */
 export const DEVICE_ID_RE = /^(?:[a-f0-9]{12}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
