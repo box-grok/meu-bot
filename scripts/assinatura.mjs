@@ -6,7 +6,8 @@
 // a ser "assinado por este certificado" e vale para todas as versões seguintes.
 //
 //   node scripts/assinatura.mjs --criar   cria o certificado no chaveiro de login (uma vez; idempotente)
-//   import { identidade } from "./assinatura.mjs"   → "meu-bot local" se existir, senão "-" (ad-hoc, como antes)
+//   import { identidade } from "./assinatura.mjs"   → "Developer ID Application: …" se estiver no chaveiro
+//   (scripts/developer-id.mjs), senão "meu-bot local" se existir, senão "-" (ad-hoc, como antes)
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
@@ -20,7 +21,39 @@ const CHAVEIRO = join(homedir(), "Library/Keychains/login.keychain-db");
 export function existe() {
   try { return execFileSync("security", ["find-identity", "-p", "codesigning", CHAVEIRO], { encoding: "utf8" }).includes(`"${NOME}"`); } catch { return false; }
 }
-export const identidade = () => (existe() ? NOME : "-");
+/**
+ * Identidade "Developer ID Application: <nome> (<TEAM_ID>)" válida no chaveiro (scripts/developer-id.mjs a instala),
+ * ou null. `-v` lista só as válidas: cadeia até a Apple e chave privada presentes.
+ */
+export function identidadeDeveloperId() {
+  try {
+    const m = /"(Developer ID Application: [^"]+ \(([A-Z0-9]{10})\))"/.exec(execFileSync("security", ["find-identity", "-v", "-p", "codesigning", CHAVEIRO], { encoding: "utf8" }));
+    return m ? m[1] : null;
+  } catch { return null; }
+}
+/** Team ID (10 caracteres) do certificado Developer ID, ou null sem ele. */
+export const teamId = () => { const m = /\(([A-Z0-9]{10})\)$/.exec(identidadeDeveloperId() ?? ""); return m ? m[1] : null; };
+/** Prefere o Developer ID quando existe; senão "meu-bot local"; senão ad-hoc. */
+export const identidade = () => identidadeDeveloperId() ?? (existe() ? NOME : "-");
+export const ehDeveloperId = (ident = identidade()) => ident.startsWith("Developer ID Application:");
+
+/**
+ * Assina o .app com a identidade da vez. Developer ID: @electron/osx-sign, de dentro para fora (helpers, frameworks,
+ * binários), hardened runtime, carimbo de tempo e os entitlements de scripts/entitlements.plist (o que a notarização
+ * exige). "meu-bot local" ou ad-hoc: `codesign --deep`, como sempre. Devolve a identidade usada.
+ */
+export async function assinar(app) {
+  const ident = identidade();
+  if (!ehDeveloperId(ident)) { execFileSync("codesign", ["--force", "--deep", "--sign", ident, app], { stdio: "inherit" }); return ident; }
+  const { signAsync } = await import("@electron/osx-sign");
+  const entitlements = new URL("./entitlements.plist", import.meta.url).pathname;
+  await signAsync({
+    app, identity: ident, keychain: CHAVEIRO, type: "distribution", hardenedRuntime: true, timestamp: undefined,
+    preAutoEntitlements: false, preEmbedProvisioningProfile: false,
+    optionsForFile: () => ({ hardenedRuntime: true, entitlements }),
+  });
+  return ident;
+}
 
 function criar() {
   if (existe()) { console.log(`✓ "${NOME}" já está no chaveiro.`); return; }

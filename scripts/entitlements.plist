@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Entitlements do hardened runtime (assinatura Developer ID, scripts/assinatura.mjs).
+     Os três primeiros o Electron exige: JIT do V8, memória executável sem assinatura e módulos nativos (e o Chromium)
+     fora da validação de biblioteca. Os outros são o que o app usa: câmera e microfone pelo Navegador (os textos
+     ficam no Info.plist, scripts/package.mjs) e Apple Events (osascript: abrir o Terminal na VPS nova, fechar apps). -->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.device.camera</key>
+  <true/>
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+  <key>com.apple.security.automation.apple-events</key>
+  <true/>
+</dict>
+</plist>
