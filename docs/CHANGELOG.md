@@ -13,6 +13,14 @@ e entra aqui na seção da versão quando ela vira estável.
 
 ## Ainda não lançado
 
+---
+
+## 10 de novembro de 2026 · v0.81.0
+
+### Grupos do WhatsApp neste Mac
+#### Corrigido
+- "Atualizar lista" dos grupos funciona na janela "Este Mac": antes parava em "já há uma listagem em andamento", porque o Mac não tem o programa de trava do Linux. O agente do WhatsApp fica fora uns 20 s e volta sozinho, como nas máquinas.
+
 ### Guarda do WhatsApp neste Mac
 #### Novo
 - **Guarda do WhatsApp neste Mac**: o tutorial 8 deixa de ficar em "Consultando a máquina…"; "Ativar" instala a guarda no OpenClaw daqui (avisos técnicos não vão ao contato, conversa bot-com-bot em loop é pausada).
