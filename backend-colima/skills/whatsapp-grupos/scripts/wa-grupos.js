@@ -70,12 +70,18 @@ if (!PLUGIN_NM) die('não achei o baileys do plugin do WhatsApp');
 
 // Guarda: gateway precisa estar parado (a menos que --forcar, por sua conta e risco).
 try {
-  const st = execSync('systemctl --user is-active openclaw-gateway.service', { encoding: 'utf8' }).trim();
+  const st = process.platform === 'darwin' ? '' : execSync('systemctl --user is-active openclaw-gateway.service', { encoding: 'utf8' }).trim();
   if (st === 'active' && !flags.has('--forcar')) {
     die('openclaw-gateway.service está ATIVO. Use scripts/wa-admin.sh (para/religa o gateway) ou pare-o antes.');
   }
 } catch (e) {
   /* inactive → is-active sai com código != 0; segue */
+}
+// No Mac (launchd, sem systemctl): o serviço ai.openclaw.gateway em "state = running".
+if (process.platform === 'darwin' && !flags.has('--forcar')) {
+  let rodando = false;
+  try { rodando = /state = running/.test(execSync(`launchctl print gui/${process.getuid()}/ai.openclaw.gateway`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); } catch { /* serviço fora do launchd: parado */ }
+  if (rodando) die('o gateway do OpenClaw está rodando. Use scripts/wa-admin.sh (para/religa o gateway) ou pare-o antes.');
 }
 
 if (!fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) die(`creds.json não encontrado em ${AUTH_DIR}`);
