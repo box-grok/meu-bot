@@ -1,5 +1,5 @@
 /**
- * Contas de CLI na máquina da janela (tutorial 11): roda o login por SSH, manda o link (e o código, quando há) para a
+ * Contas de CLI na máquina da janela (tutorial 11): roda o login por SSH (ou no bash deste Mac, na máquina local), manda o link (e o código, quando há) para a
  * janela abrir no Navegador do app e espera a ferramenta terminar. O retorno do Cloudflare para o localhost da
  * máquina é entregue pelo Navegador (`retornoParaMaquina`, browser.ts). As regras de cada ferramenta: contas-cli-core.
  */
@@ -10,6 +10,7 @@ import { browserAoChegar, sairDoSite } from "../navegador/browser";
 import { comandoEntrar, comandoSair, comandoSairDoGithub, ehPaginaDoCodigoGithub, GITHUB_OUTRA_CONTA, INSTALAR_GH_SH, lerLink, SAIR_DO_SITE, scriptColarCodigoGithub, lerStatus, loginConcluiu, NOME_CONTA, STATUS_SH, type ContaEstado, type ContaId } from "./contas-cli-core";
 import { LOCAL_HOST } from "../maquina/localBackend";
 import { isValidHost } from "../app/settings";
+import { scriptLocal } from "../whatsapp/whatsapp-local-core";
 
 const SSH_OPTS = [
   "-o", "BatchMode=yes", "-o", "ConnectTimeout=30", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3",
@@ -20,23 +21,39 @@ const REMOTE_PATH = "export PATH=$HOME/.local/bin:$HOME/bin:$HOME/.local/node/bi
 
 let atual: { host: string; id: ContaId; child: ChildProcess } | null = null;
 
+/**
+ * O processo que roda o comando: por SSH na máquina, ou no bash deste Mac (máquina "local") com o prelúdio do Mac
+ * (PATH com ~/.local/bin e o Homebrew, `timeout`). Com `tty`, o pseudo-terminal aqui é o `script` do macOS (o
+ * `ssh -tt` das máquinas); o stdin dele fica em /dev/null, porque o `script` recusa um socket como terminal.
+ */
+function processo(host: string, cmd: string, tty: boolean): ChildProcess {
+  if (host === LOCAL_HOST) {
+    const sh = scriptLocal(`${REMOTE_PATH}; ${cmd}\n`);
+    return tty
+      ? spawn("/usr/bin/script", ["-q", "/dev/null", "/bin/bash", "-c", sh], { stdio: ["ignore", "pipe", "pipe"] })
+      : spawn("/bin/bash", ["-c", sh], { stdio: ["ignore", "pipe", "pipe"] });
+  }
+  return spawn("ssh", [...(tty ? ["-tt"] : []), ...SSH_OPTS, "--", host, `${REMOTE_PATH}; ${cmd}`], { stdio: [tty ? "pipe" : "ignore", "pipe", "pipe"] });
+}
+
 function ssh(host: string, cmd: string, timeoutMs: number): Promise<{ code: number | null; out: string }> {
   return new Promise((resolve) => {
-    const child = spawn("ssh", [...SSH_OPTS, "--", host, `${REMOTE_PATH}; ${cmd}`], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = processo(host, cmd, false);
     let out = "";
     const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
-    child.stdout.on("data", (d: Buffer) => { out += d.toString("utf8"); });
-    child.stderr.on("data", (d: Buffer) => { out += d.toString("utf8"); });
+    child.stdout?.on("data", (d: Buffer) => { out += d.toString("utf8"); });
+    child.stderr?.on("data", (d: Buffer) => { out += d.toString("utf8"); });
     child.on("error", () => { clearTimeout(timer); resolve({ code: null, out }); });
     child.on("close", (code) => { clearTimeout(timer); resolve({ code, out }); });
   });
 }
 
-const remota = (host: string): boolean => host !== LOCAL_HOST && isValidHost(host);
+/** Uma máquina por SSH ou este Mac. */
+const valida = (host: string): boolean => host === LOCAL_HOST || isValidHost(host);
 
-/** null = máquina fora do alcance (ou este Mac). Conta que não respondeu fica de fora da lista. */
+/** null = máquina fora do alcance. Conta que não respondeu fica de fora da lista. */
 export async function contasStatus(host: string): Promise<ContaEstado[] | null> {
-  if (!remota(host)) return null;
+  if (!valida(host)) return null;
   const r = await ssh(host, STATUS_SH, 90_000);
   const lista = lerStatus(r.out);
   return lista.length === 0 ? null : lista;
@@ -48,7 +65,7 @@ export async function contasStatus(host: string): Promise<ContaEstado[] | null> 
  */
 export async function entrarConta(host: string, id: ContaId, navegador: boolean, trocar: boolean, send: (ev: ContaEvento) => void): Promise<void> {
   const nome = NOME_CONTA[id];
-  if (!remota(host)) { send({ kind: "done", id, ok: false, text: "só numa máquina por SSH" }); return Promise.resolve(); }
+  if (!valida(host)) { send({ kind: "done", id, ok: false, text: "máquina inválida" }); return Promise.resolve(); }
   if (atual !== null) { send({ kind: "done", id, ok: false, text: `já há um login (${NOME_CONTA[atual.id]}) em andamento` }); return Promise.resolve(); }
   const { cmd, tty } = comandoEntrar(id, navegador);
   // GitHub guarda várias contas: a de antes sai quando outra entra (uma conta por máquina, sem dúvida de qual vale).
@@ -60,7 +77,7 @@ export async function entrarConta(host: string, id: ContaId, navegador: boolean,
   }
   return new Promise((resolve) => {
     // Com `-tt` o stdin fica aberto (o pty precisa dele) e é fechado quando o processo termina ou a pessoa cancela.
-    const child = spawn("ssh", [...(tty ? ["-tt"] : []), ...SSH_OPTS, "--", host, `${REMOTE_PATH}; ${cmd}`], { stdio: [tty ? "pipe" : "ignore", "pipe", "pipe"] });
+    const child = processo(host, cmd, tty);
     child.stdin?.on("error", () => { /* pty fechou */ });
     atual = { host, id, child };
     let saida = ""; let enviado = false;
@@ -114,7 +131,7 @@ export function cancelarConta(): void {
 
 /** Botão "Instalar o GitHub CLI" (tutorial 11): instala o gh na máquina e devolve o estado novo das contas. */
 export async function instalarGh(host: string): Promise<ContaEstado[] | null> {
-  if (!remota(host)) throw new Error("só numa máquina por SSH");
+  if (!valida(host)) throw new Error("máquina inválida");
   const r = await ssh(host, INSTALAR_GH_SH, 300_000);
   const ultima = r.out.trim().split("\n").at(-1) ?? "";
   if (r.code !== 0) throw new Error(ultima !== "" ? ultima : "a instalação do gh não terminou");
@@ -123,7 +140,7 @@ export async function instalarGh(host: string): Promise<ContaEstado[] | null> {
 }
 
 export async function sairConta(host: string, id: ContaId): Promise<ContaEstado[] | null> {
-  if (!remota(host)) return null;
+  if (!valida(host)) return null;
   await ssh(host, comandoSair(id), 60_000);
   log(`[contas] ${host}: saiu do ${id}`);
   return contasStatus(host);

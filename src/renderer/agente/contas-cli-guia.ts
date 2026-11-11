@@ -13,7 +13,7 @@ import { registrarPassos } from "../tutoriais/passos.js";
 export let contasState: ContaEstado[] | null = null;
 let contaLogin: { id: ContaId; trocar: boolean; url: string | null; codigo: string | null; texto: string; rodando: boolean; ok: boolean | null } | null = null;
 export async function refreshContas(): Promise<void> {
-  if (!ctx.caps.install || ctx.windowHost === "" || ctx.windowHost === "local") return;
+  if (!ctx.caps.install || ctx.windowHost === "") return;
   try { const r = await window.meuBot.contasStatus(); if (r !== null) contasState = r; } catch { /* máquina fora: fica o que havia */ }
   ctx.paintGuide();
 }
