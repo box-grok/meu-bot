@@ -90,6 +90,9 @@ function depsDoLock(dir) {
   if (existsSync(marca) && readFileSync(marca, "utf8").trim() === hash) return true;
   log(`package-lock mudou: npm ci em ${dir}`);
   if (!rodar("npm", ["ci", "--no-audit", "--no-fund"], dir)) return false;
+  // O Electron 44 não baixa o binário no npm ci (sem postinstall): baixa no primeiro require("electron"). Com os testes
+  // em paralelo, dois arquivos baixavam juntos e um caía em "File exists (os error 17)"; a staging.6 falhou assim.
+  if (!rodar("node", [join(nm, "electron", "install.js")], dir)) return false;
   writeFileSync(marca, `${hash}\n`);
   return true;
 }
