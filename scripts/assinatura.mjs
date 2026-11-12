@@ -45,9 +45,9 @@ export const ehDeveloperId = (ident = identidade()) => ident.startsWith("Develop
 export async function assinar(app) {
   const ident = identidade();
   if (!ehDeveloperId(ident)) { execFileSync("codesign", ["--force", "--deep", "--sign", ident, app], { stdio: "inherit" }); return ident; }
-  const { signAsync } = await import("@electron/osx-sign");
+  const { sign } = await import("@electron/osx-sign");
   const entitlements = new URL("./entitlements.plist", import.meta.url).pathname;
-  await signAsync({
+  await sign({
     app, identity: ident, keychain: CHAVEIRO, type: "distribution", hardenedRuntime: true, timestamp: undefined,
     preAutoEntitlements: false, preEmbedProvisioningProfile: false,
     optionsForFile: () => ({ hardenedRuntime: true, entitlements }),
